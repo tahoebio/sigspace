@@ -73,9 +73,9 @@ class BaseAgent:
         self.base_url = base_url
 
         # Initialize tool registry and retriever
-        self.tool_registry = ToolRegistry()
+        self.tool_registry = ToolRegistry()  # type: ignore
         if use_retriever:
-            self.retriever = Retriever()
+            self.retriever = Retriever()  # type: ignore
 
         # Initialize with default tools
         self._setup_default_tools()
@@ -92,18 +92,20 @@ class BaseAgent:
         self.log: List[tuple[str, str]] = []
 
         # Configure the agent
-        self.configure()
+        self.configure()  # type: ignore
 
-    def _setup_default_tools(self):
+    def _setup_default_tools(self) -> None:
         """Set up default tools for the agent."""
         # Add default tools
-        python_tool = PythonTool()
-        web_search_tool = WebSearchTool()
+        python_tool = PythonTool()  # type: ignore
+        web_search_tool = WebSearchTool()  # type: ignore
 
         self.tool_registry.register_tool(python_tool)
         self.tool_registry.register_tool(web_search_tool)
 
-    def add_tool(self, tool: Union[BaseTool, Dict[str, Any], Callable]) -> int:
+    def add_tool(
+        self, tool: Union[BaseTool, Dict[str, Any], Callable[..., Any]]
+    ) -> int:
         """Add a tool to the agent.
 
         Args:
@@ -146,7 +148,7 @@ class BaseAgent:
                     parameters["required"].append(param_name)
 
             class CallableTool(BaseTool):
-                def __init__(self, func):
+                def __init__(self, func: Callable[..., Any]) -> None:
                     super().__init__(
                         name=func.__name__,
                         description=func.__doc__ or f"Tool {func.__name__}",
@@ -155,7 +157,7 @@ class BaseAgent:
                     )
                     self.func = func
 
-                def execute(self, **kwargs):
+                def execute(self, **kwargs: Any) -> Any:
                     return self.func(**kwargs)
 
             tool = CallableTool(tool)
@@ -242,23 +244,23 @@ class BaseAgent:
             else "No tools available"
         )
 
-        system_prompt = f"""You are a helpful AI assistant. You have access to various tools to help you complete tasks.
+        system_prompt = f"""You are a helpful AI assistant with access to tools. You MUST use the available tools to complete tasks - do not just describe what you would do, actually call the tools.
 
 AVAILABLE TOOLS:
 {tools_section}
 
-INSTRUCTIONS:
-1. Analyze the user's request carefully
-2. Choose the appropriate tools to accomplish the task
-3. Execute tools step by step as needed
-4. Provide clear explanations of what you're doing
-5. Present results in a helpful format
+CRITICAL INSTRUCTIONS:
+1. When a user asks you to do something that requires a tool, YOU MUST CALL THE TOOL IMMEDIATELY
+2. DO NOT just describe what you plan to do - actually execute the tool function call
+3. Use the proper function calling format to invoke tools
+4. After getting tool results, provide a helpful interpretation of the results
 
-When using tools:
-- Call tools using the proper function calling format
-- Handle errors gracefully
-- Explain your reasoning for tool choices
-- Break down complex tasks into smaller steps
+TOOL USAGE EXAMPLES:
+- If asked to analyze vision scores: IMMEDIATELY call analyze_vision_scores()
+- If asked to calculate something: IMMEDIATELY call python_executor()
+- If asked to search: IMMEDIATELY call web_search()
+
+Do not say "I will now call the tool" or "Let me use the tool" - just call it directly.
 
 Always be helpful, accurate, and clear in your responses."""
 
@@ -280,26 +282,141 @@ Always be helpful, accurate, and clear in your responses."""
 
         return False
 
-    def configure(self):
+    def _parse_manual_tool_calls(self, content: str) -> list:
+        """Parse function calls manually from text content for Lambda Labs."""
+        import re
+        import ast
+        import uuid
+        from langchain_core.messages import ToolMessage
+
+        tool_messages = []
+
+        # Pattern to match function calls like: analyze_vision_scores(arg1=value1, arg2=value2)
+        pattern = r"(\w+)\((.*?)\)"
+        matches = re.findall(pattern, content)
+
+        for func_name, args_str in matches:
+            print(f"[DEBUG] Found potential function call: {func_name}({args_str})")
+
+            # Check if this is one of our available tools
+            tool = self.tool_registry.get_tool_by_name(func_name)
+            if not tool:
+                print(f"[DEBUG] Function {func_name} is not a registered tool")
+                continue
+
+            try:
+                # Parse the arguments
+                # Handle both keyword and positional arguments
+                if args_str.strip():
+                    # Try to parse as keyword arguments first
+                    try:
+                        # Create a temporary function call string and parse it
+                        temp_call = f"dummy({args_str})"
+                        # Parse the AST to extract arguments
+                        parsed = ast.parse(temp_call, mode="eval")
+                        call_node = parsed.body
+
+                        args = {}
+                        for keyword in call_node.keywords:
+                            if isinstance(keyword.value, ast.Constant):
+                                args[keyword.arg] = keyword.value.value
+                            elif isinstance(
+                                keyword.value, ast.Str
+                            ):  # For older Python versions
+                                args[keyword.arg] = keyword.value.s
+                            elif isinstance(keyword.value, ast.NameConstant):
+                                args[keyword.arg] = keyword.value.value
+                            elif isinstance(keyword.value, ast.Name):
+                                # Handle boolean values like True/False
+                                if keyword.value.id in ["True", "False", "None"]:
+                                    args[keyword.arg] = eval(keyword.value.id)
+                                else:
+                                    args[keyword.arg] = keyword.value.id
+
+                        print(f"[DEBUG] Parsed arguments: {args}")
+
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to parse arguments: {e}")
+                        continue
+                else:
+                    args = {}
+
+                # Execute the tool
+                print(
+                    f"[DEBUG] Executing manually parsed tool: {func_name} with args: {args}"
+                )
+                if isinstance(tool, BaseTool):
+                    result = tool.execute(**args)
+                    print(f"[DEBUG] Manual tool result type: {type(result)}")
+                else:
+                    result = f"Tool {func_name} executed with args {args}"
+
+                # Create a tool message
+                tool_message = ToolMessage(
+                    content=json.dumps(result)
+                    if not isinstance(result, str)
+                    else result,
+                    name=func_name,
+                    tool_call_id=str(uuid.uuid4()),
+                )
+                tool_messages.append(tool_message)
+                print(
+                    f"[DEBUG] Created manual tool message with content length: {len(tool_message.content)}"
+                )
+
+            except Exception as e:
+                print(f"[DEBUG] Error executing manually parsed tool {func_name}: {e}")
+                tool_message = ToolMessage(
+                    content=f"Error executing tool {func_name}: {str(e)}",
+                    name=func_name,
+                    tool_call_id=str(uuid.uuid4()),
+                )
+                tool_messages.append(tool_message)
+
+        return tool_messages
+
+    def configure(self) -> None:
         """Configure the agent workflow."""
         # Generate system prompt
         self.system_prompt = self._generate_system_prompt()
 
         # Convert tools to LangChain format for tool calling
         langchain_tools = []
-        for tool in self.get_tools():
+        print(f"[DEBUG] Converting {len(self.get_tools())} tools to LangChain format")
+        for i, tool in enumerate(self.get_tools()):
+            print(f"[DEBUG] Tool {i}: {tool} (type: {type(tool)})")
             if isinstance(tool, BaseTool):
+                print(f"[DEBUG] Converting BaseTool: {tool.name}")
                 # Convert BaseTool to LangChain tool
                 from langchain_core.tools import tool as lc_tool
 
-                @lc_tool(tool.name, return_direct=False)
-                def tool_func(**kwargs):
-                    """Tool function wrapper."""
-                    return tool.execute(**kwargs)
+                # Fix closure issue by capturing tool in a default parameter
+                def create_tool_func(captured_tool: BaseTool) -> Callable[..., Any]:
+                    @lc_tool(captured_tool.name, return_direct=False)
+                    def tool_func(**kwargs) -> Any:
+                        """Tool function wrapper."""
+                        print(
+                            f"[DEBUG] LangChain tool '{captured_tool.name}' called with kwargs: {kwargs}"
+                        )
+                        result = captured_tool.execute(**kwargs)
+                        print(
+                            f"[DEBUG] LangChain tool '{captured_tool.name}' returned: {type(result)}"
+                        )
+                        return result
 
-                tool_func.name = tool.name
-                tool_func.description = tool.description
-                langchain_tools.append(tool_func)
+                    tool_func.name = captured_tool.name
+                    tool_func.description = captured_tool.description
+                    return tool_func
+
+                lc_tool_instance = create_tool_func(tool)
+                langchain_tools.append(lc_tool_instance)
+                print(f"[DEBUG] Created LangChain tool: {lc_tool_instance.name}")
+            else:
+                print(f"[DEBUG] Skipping non-BaseTool: {tool}")
+
+        print(f"[DEBUG] Final LangChain tools count: {len(langchain_tools)}")
+        for tool in langchain_tools:
+            print(f"[DEBUG] LangChain tool: {tool.name} - {tool.description}")
 
         # Create the workflow
         workflow = StateGraph(AgentState)
@@ -311,47 +428,109 @@ Always be helpful, accurate, and clear in your responses."""
 
             # Bind tools to LLM if available
             if langchain_tools:
-                # Handle Lambda Labs API limitation with auto tool choice
+                print(f"[DEBUG] Binding {len(langchain_tools)} tools to LLM")
+                # Handle Lambda Labs API limitation with tool choice
                 if self._is_lambda_model():
-                    # Lambda doesn't support "auto" tool choice without specific server flags
-                    # Use "none" tool choice which allows the model to decide whether to use tools
+                    # Lambda Labs doesn't support "auto" tool choice, use "none"
                     llm_with_tools = self.llm.bind_tools(
                         langchain_tools, tool_choice="none"
                     )
+                    print("[DEBUG] Using Lambda Labs with 'none' tool choice")
                 else:
                     # Use default "auto" tool choice for other providers
                     llm_with_tools = self.llm.bind_tools(langchain_tools)
+                    print("[DEBUG] Using standard provider with 'auto' tool choice")
             else:
                 llm_with_tools = self.llm
+                print("[DEBUG] No tools available, using LLM without tools")
 
+            print(f"[DEBUG] Invoking LLM with {len(messages)} messages")
             response = llm_with_tools.invoke(messages)
+            print(f"[DEBUG] LLM response type: {type(response)}")
+            print(f"[DEBUG] Response content: {response.content[:200]}...")
+            print(
+                f"[DEBUG] Response has tool_calls attribute: {hasattr(response, 'tool_calls')}"
+            )
+
+            if hasattr(response, "tool_calls"):
+                print(f"[DEBUG] tool_calls value: {response.tool_calls}")
+                print(f"[DEBUG] tool_calls type: {type(response.tool_calls)}")
+                print(
+                    f"[DEBUG] tool_calls length: {len(response.tool_calls) if response.tool_calls else 'None'}"
+                )
 
             # Check if response has tool calls
             if hasattr(response, "tool_calls") and response.tool_calls:
+                print(f"[DEBUG] Found {len(response.tool_calls)} tool calls")
+                for i, tool_call in enumerate(response.tool_calls):
+                    print(f"[DEBUG] Tool call {i}: {tool_call}")
+                    if isinstance(tool_call, dict):
+                        print(
+                            f"[DEBUG] Tool call {i}: {tool_call.get('name', 'unknown')} with args {tool_call.get('args', {})}"
+                        )
+                    else:
+                        print(f"[DEBUG] Tool call {i} type: {type(tool_call)}")
                 state["next_step"] = "execute_tools"
             else:
-                state["next_step"] = "end"
+                print("[DEBUG] No tool calls found")
+                print(
+                    f"[DEBUG] Available tool names: {[tool.name for tool in langchain_tools]}"
+                )
+
+                # For Lambda Labs, check if there are function calls in the content before routing to execute_tools
+                if self._is_lambda_model() and hasattr(response, "content"):
+                    # Quick check if there are function calls in the content
+                    import re
+
+                    pattern = r"(\w+)\((.*?)\)"
+                    matches = re.findall(pattern, response.content)
+
+                    # Filter to only our actual tool names
+                    tool_names = {tool.name for tool in langchain_tools}
+                    valid_matches = [
+                        match for match in matches if match[0] in tool_names
+                    ]
+
+                    if valid_matches:
+                        print(
+                            f"[DEBUG] Lambda Labs model - found {len(valid_matches)} potential function calls in content"
+                        )
+                        state["next_step"] = "execute_tools"
+                    else:
+                        print(
+                            "[DEBUG] Lambda Labs model - no function calls found in content, ending workflow"
+                        )
+                        state["next_step"] = "end"
+                else:
+                    print("[DEBUG] Non-Lambda model - ending workflow")
+                    state["next_step"] = "end"
 
             state["messages"].append(response)
             return state
 
         def execute_tools(state: AgentState) -> AgentState:
             """Execute tool calls."""
+            print("[DEBUG] execute_tools called")
             last_message = state["messages"][-1]
             tool_messages = []
 
             if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                print(f"[DEBUG] Processing {len(last_message.tool_calls)} tool calls")
                 for tool_call in last_message.tool_calls:
                     tool_name = tool_call["name"]
                     tool_args = tool_call["args"]
                     tool_id = tool_call["id"]
+                    print(f"[DEBUG] Executing tool: {tool_name} with args: {tool_args}")
 
                     # Find and execute the tool
                     tool = self.tool_registry.get_tool_by_name(tool_name)
                     if tool:
+                        print(f"[DEBUG] Found tool: {tool}")
                         try:
                             if isinstance(tool, BaseTool):
+                                print(f"[DEBUG] Executing BaseTool: {tool.name}")
                                 result = tool.execute(**tool_args)
+                                print(f"[DEBUG] Tool result type: {type(result)}")
                             else:
                                 # Handle dict-based tools
                                 result = (
@@ -365,13 +544,18 @@ Always be helpful, accurate, and clear in your responses."""
                                 name=tool_name,
                                 tool_call_id=tool_id,
                             )
+                            print(
+                                f"[DEBUG] Created tool message with content length: {len(tool_message.content)}"
+                            )
                         except Exception as e:
+                            print(f"[DEBUG] Tool execution error: {e}")
                             tool_message = ToolMessage(
                                 content=f"Error executing tool {tool_name}: {str(e)}",
                                 name=tool_name,
                                 tool_call_id=tool_id,
                             )
                     else:
+                        print(f"[DEBUG] Tool {tool_name} not found in registry")
                         tool_message = ToolMessage(
                             content=f"Tool {tool_name} not found",
                             name=tool_name,
@@ -379,7 +563,19 @@ Always be helpful, accurate, and clear in your responses."""
                         )
 
                     tool_messages.append(tool_message)
+            else:
+                print("[DEBUG] No tool calls found in last message")
 
+                # Fallback: manually parse function calls from text for Lambda Labs
+                if self._is_lambda_model() and hasattr(last_message, "content"):
+                    print(
+                        "[DEBUG] Attempting manual function call parsing for Lambda Labs"
+                    )
+                    tool_messages.extend(
+                        self._parse_manual_tool_calls(last_message.content)
+                    )
+
+            print(f"[DEBUG] Adding {len(tool_messages)} tool messages to state")
             state["messages"].extend(tool_messages)
             state["next_step"] = "generate"
             return state
@@ -387,11 +583,15 @@ Always be helpful, accurate, and clear in your responses."""
         def route_next(state: AgentState) -> str:
             """Route to next step."""
             next_step = state.get("next_step", "end")
+            print(f"[DEBUG] route_next: next_step = {next_step}")
             if next_step == "execute_tools":
+                print("[DEBUG] Routing to execute_tools")
                 return "execute_tools"
             elif next_step == "generate":
+                print("[DEBUG] Routing to generate")
                 return "generate"
             else:
+                print("[DEBUG] Routing to end")
                 return "end"
 
         # Add nodes
@@ -417,7 +617,7 @@ Always be helpful, accurate, and clear in your responses."""
 
         self.configured = True
 
-    def run(self, prompt: str, **kwargs) -> tuple[List[tuple[str, str]], str]:
+    def run(self, prompt: str, **kwargs: Any) -> tuple[List[tuple[str, str]], str]:
         """Run the agent with a given prompt.
 
         Args:
@@ -446,7 +646,7 @@ Always be helpful, accurate, and clear in your responses."""
 
         # Initialize state
         inputs = {"messages": [HumanMessage(content=prompt)], "next_step": None}
-        config = {"recursion_limit": 50, "configurable": {"thread_id": 42}}
+        config = {"recursion_limit": 10, "configurable": {"thread_id": 42}}
 
         self.log = []
         final_response = ""
@@ -484,7 +684,7 @@ Always be helpful, accurate, and clear in your responses."""
         _, response = self.run(prompt)
         return response
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the agent state."""
         self.log = []
         self.checkpointer = MemorySaver()
@@ -499,7 +699,7 @@ Always be helpful, accurate, and clear in your responses."""
         """
         return self.log.copy()
 
-    def save_conversation(self, filename: str):
+    def save_conversation(self, filename: str) -> None:
         """Save conversation to file.
 
         Args:
@@ -508,7 +708,7 @@ Always be helpful, accurate, and clear in your responses."""
         with open(filename, "w") as f:
             json.dump(self.log, f, indent=2)
 
-    def load_conversation(self, filename: str):
+    def load_conversation(self, filename: str) -> None:
         """Load conversation from file.
 
         Args:

@@ -13,6 +13,7 @@ Usage:
     python example.py lambda-ai --model hermes-3-llama-3.1-405b-fp8
     python example.py anthropic --model claude-3-5-sonnet-20241022
     python example.py tools --provider openai
+    python example.py vision-scores --data-path /Users/gpalla/Datasets/tahoe --cell-name HS-578T
 """
 
 from typing import Optional
@@ -21,7 +22,7 @@ import typer
 from typing_extensions import Annotated
 
 from tahoe_agent import BaseAgent
-from tahoe_agent.tool import BaseTool
+from tahoe_agent.tool import BaseTool, analyze_vision_scores
 
 app = typer.Typer(help="Tahoe Agent Demo - Test different AI providers and features")
 
@@ -262,6 +263,90 @@ def conversation(
 
     except Exception as e:
         typer.echo(f"❌ Error: {e}", err=True)
+        _show_setup_help(provider)
+        raise typer.Exit(1)
+
+
+@app.command()
+def vision_scores(
+    data_path: Annotated[
+        str, typer.Option(help="Path to directory containing h5ad files")
+    ] = "/Users/gpalla/Datasets/tahoe",
+    cell_name: Annotated[str, typer.Option(help="Cell name to analyze")] = "HS-578T",
+    use_diff_scores: Annotated[
+        bool, typer.Option(help="Use differential scores")
+    ] = True,
+    provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
+    model: Annotated[
+        Optional[str], typer.Option(help="Model name")
+    ] = "hermes-3-llama-3.1-405b-fp8",
+) -> None:
+    """Vision scores analysis demonstration."""
+
+    # Set defaults based on provider
+    if model is None:
+        if provider == "openai":
+            model = "gpt-4o-mini"
+        elif provider == "anthropic":
+            model = "claude-3-5-sonnet-20241022"
+        elif provider == "lambda":
+            model = "hermes-3-llama-3.1-405b-fp8"
+        else:
+            typer.echo(f"Unknown provider: {provider}", err=True)
+            raise typer.Exit(1)
+
+    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
+    source = source_map.get(provider)
+
+    typer.echo(f"🔬 Vision Scores Demo - {provider.title()} ({model})")
+    typer.echo("=" * 50)
+
+    try:
+        # Create agent and add vision scores tool
+        agent = BaseAgent(llm=model, source=source, temperature=0.7)
+        agent.add_tool(analyze_vision_scores)
+
+        # Test the vision scores tool
+        typer.echo(f"📊 Analyzing vision scores for cell: {cell_name}")
+        typer.echo(f"📂 Data path: {data_path}")
+        typer.echo(f"🧮 Using differential scores: {use_diff_scores}")
+
+        # First test the tool directly
+        typer.echo("\n🔧 Testing tool directly first...")
+        try:
+            direct_result = analyze_vision_scores(
+                data_path=data_path,
+                cell_name=cell_name,
+                use_diff_scores=use_diff_scores,
+            )
+            if direct_result.startswith("Error:"):
+                typer.echo(f"❌ Direct tool test failed: {direct_result}")
+            else:
+                typer.echo("✅ Direct tool test successful! Analysis completed")
+                typer.echo(f"📄 Preview: {direct_result[:300]}...")
+        except Exception as e:
+            typer.echo(f"❌ Direct tool test error: {e}")
+
+        # Create a prompt for the agent to use the tool
+        typer.echo("\n🤖 Now testing with agent...")
+        prompt = f"Use the analyze_vision_scores tool to analyze the vision scores for cell '{cell_name}' using the data at '{data_path}' with differential scores set to {use_diff_scores}. Show me the top features and provide insights about the results."
+
+        log, response = agent.run(prompt)
+
+        # Show the full log for debugging
+        typer.echo("\n📝 Full execution log:")
+        for i, (role, content) in enumerate(log):
+            typer.echo(
+                f"  {i+1}. [{role}]: {content[:200]}{'...' if len(content) > 200 else ''}"
+            )
+
+        typer.echo(f"\n🎯 Final Agent Response: {response}")
+
+    except Exception as e:
+        typer.echo(f"❌ Vision scores demo failed: {e}", err=True)
+        typer.echo("\n💡 Note: Make sure the h5ad files exist in the specified path:")
+        typer.echo("  • 20250417.diff_vision_scores_pseudobulk.public.h5ad")
+        typer.echo("  • 20250417.vision_scores_pseudobulk.public.h5ad")
         _show_setup_help(provider)
         raise typer.Exit(1)
 
