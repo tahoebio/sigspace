@@ -41,8 +41,8 @@ dependencies = [
 
 optional-dependencies.dev = [ "coverage", "mypy", "pre-commit", "pytest", "pytest-cov", "ruff" ]
 urls.Documentation = "https://tahoe-agent.readthedocs.io"
-urls.Homepage = "https://github.com/example/tahoe-agent"
-urls.Repository = "https://github.com/example/tahoe-agent"
+urls.Homepage = "https://github.com/giovp/tahoe-agent"
+urls.Repository = "https://github.com/giovp/tahoe-agent"
 
 [tool.setuptools.packages.find]
 where = [ "." ]
