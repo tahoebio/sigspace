@@ -28,7 +28,7 @@ class BaseTool(ABC):
         self.required_parameters = required_parameters or []
 
     @abstractmethod
-    def execute(self, **kwargs) -> Any:
+    def execute(self, **kwargs: Any) -> str:
         """Execute the tool with the given parameters.
 
         Args:
@@ -39,7 +39,7 @@ class BaseTool(ABC):
         """
         pass
 
-    def validate_parameters(self, **kwargs) -> bool:
+    def validate_parameters(self, **kwargs: Any) -> bool:
         """Validate that all required parameters are provided.
 
         Args:
@@ -71,7 +71,7 @@ class BaseTool(ABC):
             "required_parameters": self.required_parameters,
         }
 
-    def __call__(self, **kwargs) -> Any:
+    def __call__(self, **kwargs: Any) -> Any:
         """Make the tool callable.
 
         Args:
@@ -98,7 +98,7 @@ class BaseTool(ABC):
 class PythonTool(BaseTool):
     """A tool that executes Python code."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="python_executor",
             description="Execute Python code and return the result",
@@ -115,15 +115,19 @@ class PythonTool(BaseTool):
             required_parameters=["code"],
         )
 
-    def execute(self, code: str) -> str:
+    def execute(self, **kwargs: Any) -> str:
         """Execute Python code and return the result.
 
         Args:
-            code: Python code to execute
+            **kwargs: Must contain 'code' parameter with Python code to execute
 
         Returns:
             String result of code execution
         """
+        code = kwargs.get("code", "")
+        if not code:
+            return "Error: No code provided"
+
         import io
         from contextlib import redirect_stdout, redirect_stderr
 
@@ -134,7 +138,7 @@ class PythonTool(BaseTool):
         try:
             with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
                 # Create a local namespace for execution
-                local_namespace = {}
+                local_namespace: Dict[str, Any] = {}
                 exec(code, {"__builtins__": __builtins__}, local_namespace)
 
             # Get the output
@@ -155,7 +159,7 @@ class PythonTool(BaseTool):
 class WebSearchTool(BaseTool):
     """A placeholder tool for web search functionality."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="web_search",
             description="Search the web for information",
@@ -177,16 +181,21 @@ class WebSearchTool(BaseTool):
             required_parameters=["query"],
         )
 
-    def execute(self, query: str, num_results: int = 5) -> str:
+    def execute(self, **kwargs: Any) -> str:
         """Execute web search (placeholder implementation).
 
         Args:
-            query: Search query
-            num_results: Number of results to return
+            **kwargs: Must contain 'query', optionally 'num_results'
 
         Returns:
             String representation of search results
         """
+        query = kwargs.get("query", "")
+        num_results = kwargs.get("num_results", 5)
+
+        if not query:
+            return "Error: No query provided"
+
         # This is a placeholder implementation
         # In a real implementation, you would use a search API
         return f"Search results for '{query}' (placeholder - {num_results} results requested)"
