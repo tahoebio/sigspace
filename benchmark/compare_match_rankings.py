@@ -54,14 +54,14 @@ fig, ax = plt.subplots(figsize = (20, 16))
 sns.heatmap(rank_matrix, annot = False, cmap = "RdBu_r", xticklabels = drugs, yticklabels = drugs, ax = ax,
                 cbar_kws = {"shrink": 0.5, "label": "ranks"}, square = True)
 
-ax.tick_params(left = False, bottom = False)
+ax.tick_params(left = False, bottom = False) # type: ignore
 ax.set_xlabel("ranked drug")
 ax.set_ylabel("true drug")
 
-ax.set_xticklabels(ax.get_xticklabels(), rotation = 90, ha = "center", fontsize = 2)
-ax.set_yticklabels(ax.get_yticklabels(), rotation = 0, ha = "right", fontsize = 2)
+ax.set_xticklabels(ax.get_xticklabels(), rotation = 90, ha = "center", fontsize = 2) # type: ignore
+ax.set_yticklabels(ax.get_yticklabels(), rotation = 0, ha = "right", fontsize = 2) # type: ignore
 
-fig.subplots_adjust(bottom = 0.3, right = 0.85, top = 0.95, left = 0.2)
+fig.subplots_adjust(bottom = 0.3, right = 0.85, top = 0.95, left = 0.2) # type: ignore
 
 fig.savefig("rank_matrix_heatmap.png", bbox_inches = "tight", dpi = 300)
 plt.close(fig)
@@ -74,7 +74,7 @@ for i in range(n):
 
 fig, ax = plt.subplots(figsize = (7, 4))
 
-ax.hist(surprise, bins = np.arange(1, n + 2) - 0.5, color = "orange", edgecolor = "black")
+ax.hist(surprise, bins = np.arange(1, n + 2) - 0.5, color = "orange", edgecolor = "black") # type: ignore
 ax.set_xlabel("self-rank")
 ax.set_ylabel("count")
 
@@ -102,23 +102,23 @@ mean_difference = different_moa_mean - same_moa_mean
 
 fig, (ax_one, ax_two) = plt.subplots(1, 2, figsize = (15, 6))
 
-sns.kdeplot(data = same_moa_ranks, ax = ax_one, label = "same moa", color = "blue")
-sns.kdeplot(data = different_moa_ranks, ax = ax_one, label = "different moa", color = "red")
+sns.kdeplot(data = same_moa_ranks, ax = ax_one, label = "same moa", color = "blue") # type: ignore
+sns.kdeplot(data = different_moa_ranks, ax = ax_one, label = "different moa", color = "red") # type: ignore
 
-ax_one.axvline(same_moa_mean, color = "blue", linestyle = "--", alpha = 0.5)
-ax_one.axvline(different_moa_mean, color = "red", linestyle = "--", alpha = 0.5)
-ax_one.text(0.02, 0.98, f"mean difference: {mean_difference:.1f}", transform = ax_one.transAxes, verticalalignment = "top")
+ax_one.axvline(same_moa_mean, color = "blue", linestyle = "--", alpha = 0.5) # type: ignore
+ax_one.axvline(different_moa_mean, color = "red", linestyle = "--", alpha = 0.5) # type: ignore
+ax_one.text(0.02, 0.98, f"mean difference: {mean_difference:.1f}", transform = ax_one.transAxes, verticalalignment = "top") # type: ignore
 
-ax_one.set_xlabel("rank")
-ax_one.set_ylabel("density")
-ax_one.legend()
+ax_one.set_xlabel("rank") # type: ignore
+ax_one.set_ylabel("density") # type: ignore
+ax_one.legend() # type: ignore
 
-sns.ecdfplot(data = same_moa_ranks, ax = ax_two, label = "same moa", color = "blue")
-sns.ecdfplot(data = different_moa_ranks, ax = ax_two, label = "different moa", color = "red")
+sns.ecdfplot(data = same_moa_ranks, ax = ax_two, label = "same moa", color = "blue")  # type: ignore
+sns.ecdfplot(data = different_moa_ranks, ax = ax_two, label = "different moa", color = "red")  # type: ignore
 
-ax_two.set_xlabel("rank")
-ax_two.set_ylabel("cumulative probability")
-ax_two.set_title("cumulative distribution of ranks")
+ax_two.set_xlabel("rank") # type: ignore
+ax_two.set_ylabel("cumulative probability") # type: ignore
+ax_two.set_title("cumulative distribution of ranks") # type: ignore
 
 stats_text = (
     f"same moa:\n"
@@ -130,8 +130,8 @@ stats_text = (
     f"mean difference: {mean_difference:.1f}"
 )
 
-ax_two.text(1.05, 0.5, stats_text, transform = ax_two.transAxes, verticalalignment = "center", bbox = dict(facecolor = "white", alpha = 0.8))
+ax_two.text(1.05, 0.5, stats_text, transform = ax_two.transAxes, verticalalignment = "center", bbox = dict(facecolor = "white", alpha = 0.8)) # type: ignore
 
-fig.tight_layout()
+fig.tight_layout() # type: ignore
 fig.savefig("moa_analysis.png", bbox_inches = "tight", dpi = 300)
 plt.close()
