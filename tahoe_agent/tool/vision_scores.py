@@ -2,10 +2,28 @@
 
 import pathlib
 
-import anndata as ad
+import anndata as ad  # type: ignore
 import numpy as np
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 
 
+class VisionScoresArgs(BaseModel):
+    """Schema for vision scores analysis arguments."""
+
+    data_path: str = Field(
+        description="Path to the directory containing h5ad files or direct path to h5ad file"
+    )
+    cell_name: str = Field(
+        description="Name of the cell to analyze (from Cell_Name_Vevo column)"
+    )
+    use_diff_scores: bool = Field(
+        default=True,
+        description="Whether to use differential vision scores (True) or regular vision scores (False)",
+    )
+
+
+@tool(args_schema=VisionScoresArgs)
 def analyze_vision_scores(
     data_path: str, cell_name: str, use_diff_scores: bool = True
 ) -> str:
@@ -19,9 +37,10 @@ def analyze_vision_scores(
     Returns:
         Formatted string with the top 10 vision scores and analysis results
     """
-    print(
-        f"[DEBUG] analyze_vision_scores called with data_path: {data_path}, cell_name: {cell_name}, use_diff_scores: {use_diff_scores}"
-    )
+    if not data_path:
+        return "Error: No data_path provided"
+    if not cell_name:
+        return "Error: No cell_name provided"
 
     try:
         # Check if data_path is a file or directory
@@ -30,7 +49,6 @@ def analyze_vision_scores(
         if data_path_obj.is_file():
             # data_path is already pointing to a specific file
             file_path = data_path_obj
-            print(f"[DEBUG] Using provided file path: {file_path}")
         else:
             # data_path is a directory, construct the file path
             vision_diff = "20250417.diff_vision_scores_pseudobulk.public.h5ad"
@@ -39,7 +57,6 @@ def analyze_vision_scores(
             # Choose which file to use based on use_diff_scores parameter
             filename = vision_diff if use_diff_scores else vision_pseudo
             file_path = data_path_obj / filename
-            print(f"[DEBUG] Constructed file path: {file_path}")
 
         if not file_path.exists():
             return f"Error: Vision scores file not found: {file_path}"
@@ -110,10 +127,7 @@ def analyze_vision_scores(
 The vision scores represent the importance or activity level of different biological pathways and gene sets for this specific cell type.
 """
 
-        print(f"[DEBUG] Successfully computed vision scores for {cell_name}")
         return result
 
     except Exception as e:
-        error_msg = f"Error: Vision scores analysis failed: {str(e)}"
-        print(f"[DEBUG] Exception occurred: {str(e)}")
-        return error_msg
+        return f"Error: Vision scores analysis failed: {str(e)}"

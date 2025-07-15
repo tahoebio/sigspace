@@ -1,8 +1,11 @@
-"""Tahoe Agent - A minimal agent implementation based on Biomni."""
-
-__version__ = "0.0.0"
+"""Tahoe Agent - A minimal agent implementation with LangChain tools."""
 
 from tahoe_agent.agent.base_agent import BaseAgent
-from tahoe_agent.llm import get_llm
+from tahoe_agent.tool.vision_scores import analyze_vision_scores
 
-__all__ = ["BaseAgent", "get_llm"]
+__version__ = "0.1.0"
+
+__all__ = [
+    "BaseAgent",
+    "analyze_vision_scores",
+]
