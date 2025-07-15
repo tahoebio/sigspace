@@ -4,8 +4,10 @@ import pathlib
 from unittest.mock import patch, MagicMock
 import numpy as np
 import pandas as pd  # type: ignore
-
+import json
+from pprint import pprint
 from tahoe_agent.tool.vision_scores import analyze_vision_scores
+from tahoe_agent.tool.drug_ranking import rank_drugs_by_moa
 from tahoe_agent._constants import VisionScoreColumns
 
 
@@ -73,11 +75,64 @@ def test_analyze_vision_scores() -> None:
     print(result2)
     print("=" * 80)
 
-    # # Basic assertions
-    # assert "Vision Scores Analysis Results (Across All Cell Lines)" in result1
-    # assert "Vision Scores Analysis Results (Specific Cell Line)" in result2
-    # assert "Adagrasib" in result1
-    # assert "Adagrasib" in result2
-    # assert "HS-578T" in result2
-    # assert "Top 10 Signatures" in result1
-    # assert "Top 10 Signatures" in result2
+    # Basic assertions
+    assert "Vision Scores Analysis Results (Across All Cell Lines)" in result1
+    assert "Vision Scores Analysis Results (Specific Cell Line)" in result2
+    assert "Adagrasib" in result1
+    assert "Adagrasib" in result2
+    assert "HS-578T" in result2
+    assert "Top 10 Signatures" in result1
+    assert "Top 10 Signatures" in result2
+
+
+def test_rank_drugs_by_moa() -> None:
+    """Test rank_drugs_by_moa tool functionality."""
+
+    summary = "DNA damage response pathways are significantly altered, with increased apoptosis markers."
+
+    # Mock the drug list file
+    mock_drugs_df = pd.DataFrame(
+        {"drug_name": ["Cisplatin", "Paclitaxel", "Methotrexate"]}
+    )
+
+    with patch(
+        "tahoe_agent.tool.drug_ranking.pd.read_csv", return_value=mock_drugs_df
+    ), patch("tahoe_agent.tool.drug_ranking.get_paths") as mock_get_paths:
+        # Mock paths
+        mock_paths = MagicMock()
+        mock_paths.drugs_file = pathlib.Path("test_drugs.csv")
+        mock_get_paths.return_value = mock_paths
+
+        # Test valid input
+        result = rank_drugs_by_moa.invoke({"summary": summary})
+        parsed = json.loads(result)
+
+        pprint(parsed, indent=2)
+
+        assert "drug_list" in parsed
+        assert parsed["drug_list"] == ["Cisplatin", "Paclitaxel", "Methotrexate"]
+        assert parsed["summary"] == summary
+        assert "ranking_instructions" in parsed
+        assert parsed["total_drugs"] == 3
+        assert parsed["status"] == "ready_for_ranking"
+
+        # Check that instructions contain key elements
+        instructions = parsed["ranking_instructions"]
+        assert "mechanism of action" in instructions.lower()
+        assert "moa" in instructions.lower()
+        assert "json" in instructions.lower()
+
+        # Test empty summary
+        result_empty_summary = rank_drugs_by_moa.invoke({"summary": ""})
+        parsed_empty_summary = json.loads(result_empty_summary)
+        assert "error" in parsed_empty_summary
+
+    # Test file read error
+    with patch(
+        "tahoe_agent.tool.drug_ranking.pd.read_csv",
+        side_effect=Exception("File not found"),
+    ):
+        result_file_error = rank_drugs_by_moa.invoke({"summary": summary})
+        parsed_file_error = json.loads(result_file_error)
+        assert "error" in parsed_file_error
+        assert "Failed to load drug list" in parsed_file_error["error"]

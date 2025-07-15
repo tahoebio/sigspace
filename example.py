@@ -51,7 +51,6 @@ def vision_scores(
     ] = None,
 ) -> None:
     """Vision scores analysis demonstration."""
-
     # NEW: Configure custom paths if provided
     if custom_data_dir or custom_results_dir:
         typer.echo("🔧 Configuring custom paths...")
@@ -127,7 +126,6 @@ def vision_scores(
         typer.echo("\n💡 Note: Make sure the h5ad files exist in the specified path:")
         typer.echo("  • 20250417.diff_vision_scores_pseudobulk.public.h5ad")
         typer.echo("  • 20250417.vision_scores_pseudobulk.public.h5ad")
-        _show_setup_help(provider)
         raise typer.Exit(1)
 
 
@@ -170,92 +168,104 @@ def basic_demo(
 
     except Exception as e:
         typer.echo(f"❌ Error: {e}", err=True)
-        _show_setup_help(provider)
         raise typer.Exit(1)
 
 
 @app.command()
-def models() -> None:
-    """List example models for each provider."""
-
-    typer.echo("📋 Available Models by Provider")
-    typer.echo("=" * 40)
-
-    typer.echo("\n🔵 OpenAI:")
-    typer.echo("  • gpt-4o")
-    typer.echo("  • gpt-4o-mini")
-    typer.echo("  • gpt-4-turbo")
-
-    typer.echo("\n🟣 Anthropic:")
-    typer.echo("  • claude-3-5-sonnet-20241022")
-    typer.echo("  • claude-3-5-haiku-20241022")
-    typer.echo("  • claude-3-opus-20240229")
-
-    typer.echo("\n🚀 Lambda:")
-    typer.echo("  • hermes-3-llama-3.1-405b-fp8")
-    typer.echo("  • llama-3.1-405b-instruct-fp8")
-    typer.echo("  • llama-3.1-70b-instruct")
-
-
-# NEW: Path configuration command
-@app.command()
-def paths(
-    data_dir: Annotated[
-        Optional[str], typer.Option(help="Set custom data directory")
+def drug_ranking(
+    data_path: Annotated[
+        str, typer.Option(help="Path to directory containing h5ad files")
+    ] = "/Users/gpalla/Datasets/tahoe",
+    cell_name: Annotated[
+        Optional[str], typer.Option(help="Cell name to analyze")
     ] = None,
-    results_dir: Annotated[
-        Optional[str], typer.Option(help="Set custom results directory")
+    drug_name: Annotated[str, typer.Option(help="Drug name to analyze")] = "Adagrasib",
+    provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
+    model: Annotated[
+        Optional[str], typer.Option(help="Model name")
+    ] = "hermes-3-llama-3.1-405b-fp8",
+    # NEW: Path configuration options
+    custom_data_dir: Annotated[
+        Optional[str], typer.Option(help="Custom data directory")
     ] = None,
-    vision_diff_filename: Annotated[
-        Optional[str], typer.Option(help="Set custom diff filename")
-    ] = None,
-    vision_pseudo_filename: Annotated[
-        Optional[str], typer.Option(help="Set custom pseudo filename")
+    custom_results_dir: Annotated[
+        Optional[str], typer.Option(help="Custom results directory")
     ] = None,
 ) -> None:
-    """Show or configure path settings."""
+    """Test drug ranking functionality."""
 
-    # Configure paths if any are provided
-    if any([data_dir, results_dir, vision_diff_filename, vision_pseudo_filename]):
+    # NEW: Configure custom paths if provided
+    if custom_data_dir or custom_results_dir:
         typer.echo("🔧 Configuring custom paths...")
         config_kwargs = {}
-        if data_dir:
-            config_kwargs["data_dir"] = data_dir
-        if results_dir:
-            config_kwargs["results_dir"] = results_dir
-        if vision_diff_filename:
-            config_kwargs["vision_diff_filename"] = vision_diff_filename
-        if vision_pseudo_filename:
-            config_kwargs["vision_pseudo_filename"] = vision_pseudo_filename
-
+        if custom_data_dir:
+            config_kwargs["data_dir"] = custom_data_dir
+        if custom_results_dir:
+            config_kwargs["results_dir"] = custom_results_dir
         configure_paths(**config_kwargs)
-        typer.echo("✅ Paths updated!")
+        typer.echo(f"   Data directory: {get_paths().data_dir}")
+        typer.echo(f"   Results directory: {get_paths().results_dir}")
 
-    # Show current configuration
-    paths_config = get_paths()
-    typer.echo("\n📁 Current Path Configuration:")
-    typer.echo("=" * 40)
+    # Set defaults based on provider
+    if model is None:
+        if provider == "openai":
+            model = "gpt-4o-mini"
+        elif provider == "anthropic":
+            model = "claude-3-5-sonnet-20241022"
+        elif provider == "lambda":
+            model = "hermes-3-llama-3.1-405b-fp8"
+        else:
+            typer.echo(f"Unknown provider: {provider}", err=True)
+            raise typer.Exit(1)
 
-    for key, value in paths_config.to_dict().items():
-        typer.echo(f"  {key}: {value}")
+    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
+    source = source_map.get(provider)
 
-    typer.echo("\n💡 You can also set paths via environment variables:")
-    typer.echo("  export TAHOE_DATA_DIR=/custom/data/path")
-    typer.echo("  export TAHOE_RESULTS_DIR=/custom/results/path")
-    typer.echo("  export TAHOE_VISION_DIFF_FILE=custom_diff.h5ad")
-    typer.echo("  export TAHOE_VISION_PSEUDO_FILE=custom_pseudo.h5ad")
+    typer.echo(f"💊 Drug Ranking Demo - {provider.title()} ({model})")
+    typer.echo("=" * 50)
 
+    try:
+        # Initialize agent with hidden drug configuration
+        agent = BaseAgent(
+            llm=model,
+            source=source,
+            temperature=0.7,
+            tool_config={"drug_name": drug_name},  # Hidden from LLM
+        )
 
-def _show_setup_help(provider: str) -> None:
-    """Show setup instructions for a provider."""
-    typer.echo("\n🔧 Setup Instructions:")
+        # Build prompt based on whether cell_name is provided
+        base_prompt = "Use the analyze_vision_scores tool to analyze the vision scores"
+        if cell_name is not None:
+            base_prompt += f" for cell line '{cell_name}'"
 
-    if provider == "openai":
-        typer.echo("  export OPENAI_API_KEY='your-openai-api-key'")
-    elif provider == "anthropic":
-        typer.echo("  export ANTHROPIC_API_KEY='your-anthropic-api-key'")
-    elif provider == "lambda":
-        typer.echo("  export LAMBDA_API_KEY='your-lambda-api-key'")
+        prompt = f"""{base_prompt}.
+
+        Show me the top features and provide insights about the results.
+
+        After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
+        """
+
+        typer.echo("💬 Testing drug ranking with BLIND prompt (drug name hidden):")
+        typer.echo(f"   Hidden drug: {drug_name}")
+        typer.echo(f"   Prompt: {prompt[:100]}...")
+        typer.echo("\n🤖 Running agent workflow...")
+
+        log, response = agent.run(prompt)
+
+        # Show execution log
+        typer.echo("\n📝 Execution log:")
+        for i, (role, content) in enumerate(log):
+            typer.echo(
+                f"  {i+1}. [{role}]: {content[:150]}{'...' if len(content) > 150 else ''}"
+            )
+
+        typer.echo(f"\n🎯 Final Drug Rankings (Hidden drug was: {drug_name}):")
+        typer.echo("=" * 50)
+        typer.echo(response)
+
+    except Exception as e:
+        typer.echo(f"❌ Drug ranking demo failed: {e}", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

@@ -14,14 +14,9 @@ from tahoe_agent._constants import VisionScoreColumns
 class VisionScoresArgs(BaseModel):
     """Schema for vision scores analysis arguments."""
 
-    drug_name: str = Field(
-        description=f"Name of the drug to analyze (from {VisionScoreColumns.DRUG} column)"
-    )
     cell_name: Optional[str] = Field(
-        description=f"Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines."
-    )
-    exclude_drug_name: bool = Field(
-        default=False, description="Whether to hide the drug name from the prompt"
+        default=None,
+        description=f"Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines.",
     )
 
 
@@ -149,23 +144,24 @@ def analyze_signatures(
 
 @tool(args_schema=VisionScoresArgs)
 def analyze_vision_scores(
-    drug_name: str,
     cell_name: Optional[str] = None,
-    exclude_drug_name: bool = False,
+    drug_name: Optional[str] = None,  # Hidden parameter injected by agent
 ) -> str:
     """Analyze vision scores for a specific drug and optionally a specific cell line.
 
+    This tool analyzes biological signatures for a drug. The drug name is automatically
+    provided by the system and should not be specified by the user.
+
     Args:
-        drug_name: Name of the drug to analyze (from {VisionScoreColumns.DRUG} column)
         cell_name: Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines.
-        exclude_drug_name: Whether to hide the drug name from the prompt
+        drug_name: [HIDDEN] Drug name injected by the agent system
 
     Returns:
         Formatted string with analysis results or error message
     """
-    # Input validation
+    # Input validation - drug_name should be injected by the agent
     if not drug_name or not isinstance(drug_name, str):
-        return "Error: drug_name must be a non-empty string"
+        return "Error: Drug name must be configured in the agent system for blind evaluation"
 
     try:
         # Get path configuration and load data
@@ -190,21 +186,16 @@ def analyze_vision_scores(
         # Analyze signatures
         signatures = analyze_signatures(adata, drug_name, cell_name, concentration=5.0)
 
-        # Format results
-        drug_display = "[HIDDEN]" if exclude_drug_name else drug_name
-
         # Create header based on whether cell_name is provided
         if cell_name is None:
             header = f"""# Vision Scores Analysis Results (Across All Cell Lines)
 
-**Drug:** {drug_display}
 **Concentration:** {signatures['concentration']}
 **Data File:** {file_path.name}
 **Total Cell Lines Analyzed:** {signatures['total_analyzed']}"""
         else:
             header = f"""# Vision Scores Analysis Results (Specific Cell Line)
 
-**Drug:** {drug_display}
 **Cell Line:** {cell_name}
 **Concentration:** {signatures['concentration']}
 **Data File:** {file_path.name}

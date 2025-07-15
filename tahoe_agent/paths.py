@@ -26,6 +26,7 @@ class PathConfig:
     # Vision scores specific files
     vision_diff_filename: str = "20250417.diff_vision_scores_pseudobulk.public.h5ad"
     vision_pseudo_filename: str = "20250417.vision_scores_pseudobulk.public.h5ad"
+    drugs_filename: str = "drugs.csv"
 
     def __post_init__(self) -> None:
         """Initialize paths from environment variables if available."""
@@ -38,6 +39,8 @@ class PathConfig:
             self.vision_diff_filename = env_vision_diff
         if env_vision_pseudo := os.getenv("TAHOE_VISION_PSEUDO_FILE"):
             self.vision_pseudo_filename = env_vision_pseudo
+        if env_drugs := os.getenv("TAHOE_DRUGS_FILE"):
+            self.drugs_filename = env_drugs
 
     @property
     def vision_diff_file(self) -> pathlib.Path:
@@ -48,6 +51,11 @@ class PathConfig:
     def vision_pseudo_file(self) -> pathlib.Path:
         """Get the full path to the vision pseudo scores file."""
         return self.data_dir / self.vision_pseudo_filename
+
+    @property
+    def drugs_file(self) -> pathlib.Path:
+        """Get the full path to the drugs file."""
+        return self.data_dir / self.drugs_filename
 
     def get_data_file(self, filename: str) -> pathlib.Path:
         """Get a file path in the data directory."""
