@@ -166,3 +166,7 @@ cython_debug/
 
 # Environment variables
 .env
+
+# hydra
+multirun/
+outputs/

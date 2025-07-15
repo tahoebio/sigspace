@@ -1,133 +1,245 @@
 """Vision scores analysis tool for Tahoe Agent."""
 
-import pathlib
+from typing import Optional, Dict, Any
 
 import anndata as ad  # type: ignore
 import numpy as np
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from tahoe_agent.paths import get_paths
+from tahoe_agent._constants import VisionScoreColumns
+
 
 class VisionScoresArgs(BaseModel):
     """Schema for vision scores analysis arguments."""
 
-    data_path: str = Field(
-        description="Path to the directory containing h5ad files or direct path to h5ad file"
+    drug_name: str = Field(
+        description=f"Name of the drug to analyze (from {VisionScoreColumns.DRUG} column)"
     )
-    cell_name: str = Field(
-        description="Name of the cell to analyze (from Cell_Name_Vevo column)"
+    cell_name: Optional[str] = Field(
+        description=f"Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines."
     )
-    use_diff_scores: bool = Field(
-        default=True,
-        description="Whether to use differential vision scores (True) or regular vision scores (False)",
+    exclude_drug_name: bool = Field(
+        default=False, description="Whether to hide the drug name from the prompt"
     )
+
+
+def analyze_signatures(
+    adata: ad.AnnData,
+    drug_name: str,
+    cell_name: Optional[str] = None,
+    concentration: float = 5.0,
+) -> Dict[str, Any]:
+    """Analyze drug signatures for a specific drug and concentration, with or without cell line.
+
+    Args:
+        adata: AnnData object with vision scores
+        drug_name: Name of the drug to analyze
+        cell_name: Name of the cell to analyze. If None, analyze across all cell lines.
+        concentration: Drug concentration to filter on (default: 5.0)
+
+    Returns:
+        Dictionary containing top_250, bottom_250 signatures, drug_name, and optionally cell_name
+    """
+    # Initialize variables
+    all_signatures: np.ndarray
+    scores: np.ndarray
+    total_analyzed: int
+
+    if cell_name is None:
+        # Case 1: Analyze across all cell lines
+        mask = (adata.obs[VisionScoreColumns.DRUG] == drug_name) & (
+            adata.obs[VisionScoreColumns.CONCENTRATION] == concentration
+        )
+
+        if not mask.any():
+            available_drugs = adata.obs[VisionScoreColumns.DRUG].unique()[:10]
+            available_concs = adata.obs[VisionScoreColumns.CONCENTRATION].unique()
+            raise ValueError(
+                f"No data found for drug '{drug_name}' at concentration {concentration}. "
+                f"Available drugs: {list(available_drugs)}, "
+                f"Available concentrations: {list(available_concs)}"
+            )
+
+        # Get data for this drug at specified concentration across all cell lines
+        data = adata.X[mask, :]
+
+        # Convert to dense array if sparse
+        if hasattr(data, "toarray"):
+            data = data.toarray()
+
+        # Create repeated signature names array matching the data shape
+        all_signatures = np.repeat(adata.var_names, data.shape[0])
+
+        # Flatten all vision scores across cell lines into a 1D array
+        scores = data.flatten()
+        total_analyzed = len(scores)
+
+    else:
+        # Case 2: Analyze specific drug-cell combination
+        mask = (
+            (adata.obs[VisionScoreColumns.DRUG] == drug_name)
+            & (adata.obs[VisionScoreColumns.CELL_NAME] == cell_name)
+            & (adata.obs[VisionScoreColumns.CONCENTRATION] == concentration)
+        )
+
+        if not mask.any():
+            available_cells = adata.obs[
+                adata.obs[VisionScoreColumns.DRUG] == drug_name
+            ][VisionScoreColumns.CELL_NAME].unique()[:10]
+            available_concs = adata.obs[
+                adata.obs[VisionScoreColumns.DRUG] == drug_name
+            ][VisionScoreColumns.CONCENTRATION].unique()
+            raise ValueError(
+                f"No data found for drug '{drug_name}', cell '{cell_name}' at concentration {concentration}. "
+                f"Available cells for this drug: {list(available_cells)}, "
+                f"Available concentrations: {list(available_concs)}"
+            )
+
+        # Get the specific data point(s) and convert to dense array if needed
+        data = adata.X[mask, :]
+        if hasattr(data, "toarray"):
+            data = data.toarray()
+
+        # Create signature names array matching the flattened data shape
+        # If we have multiple replicates, repeat gene names for each replicate
+        all_signatures = np.repeat(adata.var_names, data.shape[0])
+
+        # Since we filtered by cell line, drug and concentration,
+        # we can just flatten the array to get 1D scores
+        scores = data.flatten()
+        total_analyzed = sum(mask)
+
+        assert scores.ndim == all_signatures.ndim
+
+    # Get indices for top/bottom 250 scores and corresponding signatures
+    score_indices = np.argsort(scores)
+    bottom_250_indices = score_indices[:250]  # Bottom 250 in ascending order
+    top_250_indices = score_indices[-250:][::-1]  # Top 250 in descending order
+
+    # Get corresponding signatures and scores in sorted order
+    top_250_signatures = all_signatures[top_250_indices]
+    bottom_250_signatures = all_signatures[bottom_250_indices]
+
+    # Create result dictionary
+    result = {
+        "drug_name": drug_name,
+        "cell_name": cell_name,
+        "concentration": concentration,
+        "total_analyzed": total_analyzed,
+        "top_250": [
+            {
+                "feature": top_250_signatures[i],
+                "score": float(scores[top_250_indices[i]]),
+            }
+            for i in range(len(top_250_indices))
+        ],
+        "bottom_250": [
+            {
+                "feature": bottom_250_signatures[i],
+                "score": float(scores[bottom_250_indices[i]]),
+            }
+            for i in range(len(bottom_250_indices))
+        ],
+    }
+
+    return result
 
 
 @tool(args_schema=VisionScoresArgs)
 def analyze_vision_scores(
-    data_path: str, cell_name: str, use_diff_scores: bool = True
+    drug_name: str,
+    cell_name: Optional[str] = None,
+    exclude_drug_name: bool = False,
 ) -> str:
-    """Analyze vision scores from h5ad files and return top 10 vision scores for a specific cell.
+    """Analyze vision scores for a specific drug and optionally a specific cell line.
 
     Args:
-        data_path: Path to the directory containing h5ad files or direct path to h5ad file
-        cell_name: Name of the cell to analyze (from Cell_Name_Vevo column)
-        use_diff_scores: Whether to use differential vision scores (True) or regular vision scores (False)
+        drug_name: Name of the drug to analyze (from {VisionScoreColumns.DRUG} column)
+        cell_name: Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines.
+        exclude_drug_name: Whether to hide the drug name from the prompt
 
     Returns:
-        Formatted string with the top 10 vision scores and analysis results
+        Formatted string with analysis results or error message
     """
-    if not data_path:
-        return "Error: No data_path provided"
-    if not cell_name:
-        return "Error: No cell_name provided"
+    # Input validation
+    if not drug_name or not isinstance(drug_name, str):
+        return "Error: drug_name must be a non-empty string"
 
     try:
-        # Check if data_path is a file or directory
-        data_path_obj = pathlib.Path(data_path)
+        # Get path configuration and load data
+        paths = get_paths()
 
-        if data_path_obj.is_file():
-            # data_path is already pointing to a specific file
-            file_path = data_path_obj
-        else:
-            # data_path is a directory, construct the file path
-            vision_diff = "20250417.diff_vision_scores_pseudobulk.public.h5ad"
-            vision_pseudo = "20250417.vision_scores_pseudobulk.public.h5ad"
-
-            # Choose which file to use based on use_diff_scores parameter
-            filename = vision_diff if use_diff_scores else vision_pseudo
-            file_path = data_path_obj / filename
+        # Use default vision scores file
+        file_path = paths.vision_diff_file
 
         if not file_path.exists():
             return f"Error: Vision scores file not found: {file_path}"
 
-        # Load the h5ad file
+        # Load data and check required columns
         adata = ad.read_h5ad(file_path)
+        required_cols = [VisionScoreColumns.DRUG, VisionScoreColumns.CONCENTRATION]
+        if cell_name is not None:
+            required_cols.append(VisionScoreColumns.CELL_NAME)
 
-        # Check if cell_name exists in the data
-        if "Cell_Name_Vevo" not in adata.obs.columns:
-            return "Error: Cell_Name_Vevo column not found in the data"
+        missing_cols = [col for col in required_cols if col not in adata.obs.columns]
+        if missing_cols:
+            return f"Error: Missing required columns: {missing_cols}"
 
-        # Find the cell index
-        cell_mask = adata.obs["Cell_Name_Vevo"] == cell_name
-        if not cell_mask.any():
-            available_cells = adata.obs["Cell_Name_Vevo"].unique()[
-                :10
-            ]  # Show first 10 for reference
-            return f"Error: Cell '{cell_name}' not found. Available cells include: {list(available_cells)}"
+        # Analyze signatures
+        signatures = analyze_signatures(adata, drug_name, cell_name, concentration=5.0)
 
-        # Get the cell index (should be only one match)
-        cell_idx = np.where(cell_mask)[0][0]
+        # Format results
+        drug_display = "[HIDDEN]" if exclude_drug_name else drug_name
 
-        # Get vision scores for this cell
-        cell_scores = adata.X[cell_idx, :]
+        # Create header based on whether cell_name is provided
+        if cell_name is None:
+            header = f"""# Vision Scores Analysis Results (Across All Cell Lines)
 
-        # Get variable names (features)
-        var_names = adata.var_names.tolist()
+**Drug:** {drug_display}
+**Concentration:** {signatures['concentration']}
+**Data File:** {file_path.name}
+**Total Cell Lines Analyzed:** {signatures['total_analyzed']}"""
+        else:
+            header = f"""# Vision Scores Analysis Results (Specific Cell Line)
 
-        # Handle sparse matrices if necessary
-        if hasattr(cell_scores, "toarray"):
-            cell_scores = cell_scores.toarray().flatten()
-        elif hasattr(cell_scores, "flatten"):
-            cell_scores = cell_scores.flatten()
+**Drug:** {drug_display}
+**Cell Line:** {cell_name}
+**Concentration:** {signatures['concentration']}
+**Data File:** {file_path.name}
+**Data Points Used:** {signatures['total_analyzed']}"""
 
-        # Get top 10 indices
-        top_indices = np.argsort(cell_scores)[-10:][::-1]  # Top 10 in descending order
+        # Add signatures (same format for both cases)
+        result = header + "\n\n## Top 10 Signatures (Highest Absolute Scores):\n\n"
 
-        # Format results as a string
-        analysis_type = (
-            "differential_vision_scores" if use_diff_scores else "vision_scores"
-        )
+        for i, item in enumerate(signatures["top_250"][:10], 1):
+            result += f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n"
 
-        result = f"""# Vision Scores Analysis Results
+        result += "\n## Bottom 10 Signatures (Lowest Absolute Scores):\n\n"
 
-**Cell:** {cell_name}
-**Analysis Type:** {analysis_type}
-**Total Features:** {len(var_names)}
-**Data Shape:** {adata.n_obs} cells × {adata.n_vars} features
+        for i, item in enumerate(signatures["bottom_250"][:10], 1):
+            result += f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n"
 
-## Top 10 Vision Scores:
+        # Add summary (same for both cases)
+        if cell_name is None:
+            analysis_context = "mean scores across all cell lines for this drug"
+        else:
+            analysis_context = "specific drug-cell line combination"
 
-"""
-
-        for i, idx in enumerate(top_indices, 1):
-            feature_name = var_names[idx]
-            score = float(cell_scores[idx])
-            result += f"{i:2d}. **{feature_name}**: {score:.6f}\n"
-
-        # Add statistics
         result += f"""
-## Statistics:
-- **Mean Score:** {float(np.mean(cell_scores)):.6f}
-- **Std Dev:** {float(np.std(cell_scores)):.6f}
-- **Min Score:** {float(np.min(cell_scores)):.6f}
-- **Max Score:** {float(np.max(cell_scores)):.6f}
-- **Median Score:** {float(np.median(cell_scores)):.6f}
+## Analysis Summary:
+- **Total signatures analyzed:** {len(adata.var_names)}
+- **Top 250 signatures identified** (showing top 10 above)
+- **Bottom 250 signatures identified** (showing bottom 10 above)
+- **Analysis based on {analysis_context}**
 
-The vision scores represent the importance or activity level of different biological pathways and gene sets for this specific cell type.
+The vision scores represent the importance or activity level of different biological pathways and gene sets for this drug{' across all tested cell lines' if cell_name is None else ' in this specific cell line'}.
 """
 
         return result
 
+    except ValueError as e:
+        return f"Error: {str(e)}"
     except Exception as e:
         return f"Error: Vision scores analysis failed: {str(e)}"

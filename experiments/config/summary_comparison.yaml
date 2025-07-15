@@ -1,0 +1,13 @@
+# @package _global_
+
+model: openai/gpt-4o-mini
+temperature: 0.7
+use_retriever: false
+timeout_seconds: 300
+source: openai
+base_url: https://api.openai.com/v1
+
+hydra:
+  sweeper:
+    params:
+      model: openai/gpt-4o-mini, openai/gpt-4o
