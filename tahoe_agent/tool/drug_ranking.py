@@ -52,11 +52,5 @@ def rank_drugs_by_moa(summary: str) -> str:
         "- Compare how each drug's MoA relates to the biological processes in the summary\n"
         "- Assign relevance scores from 0.0 to 1.0 (1.0 = most relevant MoA match)\n"
         "- Focus on mechanistic similarities, not just therapeutic area\n\n"
-        "**REQUIRED OUTPUT FORMAT:**\n"
-        "Return a JSON object with this exact structure:\n"
-        "{\n"
-        "  \"drug_name\": \"DrugName\",\n"
-        "  \"relevance_score\": 0.95,\n"
-        "}\n"
     )
     return ranking_instructions

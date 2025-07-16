@@ -120,6 +120,8 @@ def vision_scores(
             )
 
         typer.echo(f"\n🎯 Final Agent Response: {response}")
+        # typer.echo(f"🔍 Summary: {state['summary']}")
+        # typer.echo(f"🔍 Drug Rankings: {state['drug_rankings']}")
 
     except Exception as e:
         typer.echo(f"❌ Vision scores demo failed: {e}", err=True)

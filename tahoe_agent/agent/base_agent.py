@@ -22,6 +22,23 @@ from tahoe_agent.tool.vision_scores import analyze_vision_scores
 from tahoe_agent.tool.drug_ranking import rank_drugs_by_moa
 from tahoe_agent.utils import pretty_print
 from functools import partial
+from pydantic import BaseModel, Field
+from typing import List as TypingList
+
+
+class DrugRanking(BaseModel):
+    """Individual drug ranking with score."""
+
+    drug: str = Field(description="Name of the drug")
+    score: float = Field(description="Relevance score for the drug")
+
+
+class DrugRankings(BaseModel):
+    """Structured output for drug rankings."""
+
+    rankings: TypingList[DrugRanking] = Field(
+        description="List of drug rankings ordered by relevance score"
+    )
 
 
 class AgentState(TypedDict):
@@ -30,6 +47,9 @@ class AgentState(TypedDict):
     messages: List[BaseMessage]
     summary: Optional[str]  # Store the summary from retrieval step
     drug_rankings: Optional[str]  # Store the final drug ranking results
+    structured_rankings: Optional[
+        TypingList[DrugRanking]
+    ]  # Store structured drug rankings
 
 
 class BaseAgent:
@@ -372,25 +392,54 @@ Summary: {summary}"""
                             f"[DEBUG] drug_ranking_node: Unexpected tool call: {tool_name} - ignoring"
                         )
 
-                # Get final response after tool execution
+                # Get final response after tool execution with structured output
                 final_messages = (
                     [SystemMessage(content=self.system_prompt)]
                     + [ranking_tool_message]
                     + [
                         HumanMessage(
-                            content="Based on the drug ranking tool results above, provide the final ranked list of drugs with their relevance scores and reasoning."
+                            content="Based on the drug ranking tool results above, provide the final ranked list of drugs with their relevance scores. Return the top 100 drugs as a structured list where each entry contains the drug name and its relevance score."
                         )
                     ]
                 )
-                final_response = self.llm.invoke(final_messages)
-                print(
-                    f"[DEBUG] drug_ranking_node: Final response: {final_response.content}"
-                )
-                state["messages"].append(final_response)
 
-                if hasattr(final_response, "content") and final_response.content:
-                    state["drug_rankings"] = str(final_response.content)
+                # Use structured output to get rankings as list of dictionaries
+                llm_with_structured_output = self.llm.with_structured_output(
+                    DrugRankings
+                )
+                structured_response = llm_with_structured_output.invoke(final_messages)
+
+                print(
+                    f"[DEBUG] drug_ranking_node: Structured response: {structured_response}"
+                )
+
+                # Ensure we have a proper DrugRankings instance
+                if isinstance(structured_response, DrugRankings):
+                    # Convert structured response to text for state storage
+                    rankings_text = (
+                        f"Drug Rankings ({len(structured_response.rankings)} drugs):\n"
+                    )
+                    for i, ranking in enumerate(structured_response.rankings, 1):
+                        rankings_text += f"{i}. {ranking.drug}: {ranking.score:.3f}\n"
+
+                    # Store both structured and text versions
+                    state["drug_rankings"] = rankings_text
+                    state["structured_rankings"] = structured_response.rankings
                     print("[DEBUG] drug_ranking_node: Stored final drug rankings")
+                else:
+                    # Fallback if structured output doesn't work as expected
+                    rankings_text = (
+                        f"Error: Unexpected response format: {structured_response}"
+                    )
+                    state["drug_rankings"] = rankings_text
+                    state["structured_rankings"] = None
+                    print(
+                        f"[DEBUG] drug_ranking_node: Unexpected response type: {type(structured_response)}"
+                    )
+
+                # Create AI message with the formatted rankings
+                final_response = AIMessage(content=rankings_text)
+                state["messages"].append(final_response)
             else:
                 print(
                     "[DEBUG] drug_ranking_node: No tool calls made - this should not happen"
@@ -524,10 +573,20 @@ Summary: {summary}"""
         return self.log.copy()
 
     def get_drug_rankings(self) -> Optional[str]:
-        """Get the latest drug rankings from the most recent run.
+        """Get the latest drug rankings from the most recent run as formatted text.
 
         Returns:
-            JSON string with drug rankings or None if not available
+            Formatted string with drug rankings or None if not available
+        """
+        # This would need to be stored from the latest run
+        # For now, return None - in practice, you'd want to store this in the instance
+        return None
+
+    def get_structured_rankings(self) -> Optional[List[Dict[str, Union[str, float]]]]:
+        """Get the latest drug rankings as a list of dictionaries.
+
+        Returns:
+            List of dictionaries with 'drug' and 'score' keys, or None if not available
         """
         # This would need to be stored from the latest run
         # For now, return None - in practice, you'd want to store this in the instance
