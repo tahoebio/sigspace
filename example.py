@@ -9,7 +9,7 @@ This example shows:
 4. Configurable path management (NEW)
 
 Usage:
-    python example.py vision-scores --data-path /Users/gpalla/Datasets/tahoe --cell-name HS-578T
+    python example.py vision-scores --data-path /Users/rohit/Desktop/tahoe_data --cell-name HS-578T
     python example.py vision-scores --provider anthropic --model claude-3-5-sonnet-20241022
     python example.py vision-scores --provider lambda --model hermes-3-llama-3.1-405b-fp8
     python example.py models
@@ -21,8 +21,14 @@ from typing import Optional
 import typer
 from typing_extensions import Annotated
 
+import pathlib
+import pandas as pd
+from tahoe_agent.paths import get_paths
+
 from tahoe_agent import BaseAgent
 from tahoe_agent.paths import configure_paths, get_paths  # NEW
+from tahoe_agent.llm import SourceType
+import typing
 
 app = typer.Typer(
     help="Tahoe Agent Vision Scores Demo - Analyze vision scores with different AI providers"
@@ -33,7 +39,7 @@ app = typer.Typer(
 def vision_scores(
     data_path: Annotated[
         str, typer.Option(help="Path to directory containing h5ad files")
-    ] = "/Users/gpalla/Datasets/tahoe",
+    ] = "/Users/rohit/Desktop/tahoe_data",
     cell_name: Annotated[
         Optional[str], typer.Option(help="Cell name to analyze")
     ] = None,
@@ -99,7 +105,12 @@ def vision_scores(
 
     try:
         # Create agent (vision scores tool is added by default)
-        agent = BaseAgent(llm=model, source=source, temperature=0.7)  # type: ignore
+        agent = BaseAgent(
+            llm=model,
+            source=typing.cast(SourceType, source_map[provider]),
+            temperature=0.7,
+            tool_config={"drug_name": drug_name},  # <-- This is required for blind evaluation!
+        )
 
         # Test the vision scores tool
         typer.echo(f"📊 Analyzing vision scores for cell: {cell_name}")
@@ -156,10 +167,10 @@ def basic_demo(
     typer.echo("=" * 50)
 
     try:
-        agent = BaseAgent(llm=model, source=source, temperature=temperature)  # type: ignore
+        agent = BaseAgent(llm=model, source=typing.cast(SourceType, source_map[provider]), temperature=temperature)  # type: ignore
 
         # Simple prompt to test the tool
-        prompt = "Analyze vision scores for cell HS-578T and drug TestDrug using differential scores from /Users/gpalla/Datasets/tahoe"
+        prompt = "Analyze vision scores for cell HS-578T and drug TestDrug using differential scores from /Users/rohit/Desktop/tahoe_data"
 
         log, response = agent.run(prompt)
 
@@ -175,7 +186,7 @@ def basic_demo(
 def drug_ranking(
     data_path: Annotated[
         str, typer.Option(help="Path to directory containing h5ad files")
-    ] = "/Users/gpalla/Datasets/tahoe",
+    ] = "/Users/rohit/Desktop/tahoe_data",
     cell_name: Annotated[
         Optional[str], typer.Option(help="Cell name to analyze")
     ] = None,
@@ -228,7 +239,7 @@ def drug_ranking(
         # Initialize agent with hidden drug configuration
         agent = BaseAgent(
             llm=model,
-            source=source,
+            source=typing.cast(SourceType, source_map[provider]),
             temperature=0.7,
             tool_config={"drug_name": drug_name},  # Hidden from LLM
         )
@@ -267,6 +278,106 @@ def drug_ranking(
         typer.echo(f"❌ Drug ranking demo failed: {e}", err=True)
         raise typer.Exit(1)
 
+
+@app.command()
+def batch_vision_scores(
+    data_path: Annotated[
+        str, typer.Option(help="Path to directory containing h5ad files")
+    ] = "/Users/rohit/Desktop/tahoe_data",
+    cell_name: Annotated[
+        Optional[str], typer.Option(help="Cell name to analyze")
+    ] = None,
+    provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
+    model: Annotated[
+        Optional[str], typer.Option(help="Model name")
+    ] = "hermes-3-llama-3.1-405b-fp8",
+    custom_data_dir: Annotated[
+        Optional[str], typer.Option(help="Custom data directory")
+    ] = None,
+    custom_results_dir: Annotated[
+        Optional[str], typer.Option(help="Custom results directory")
+    ] = None,
+    overwrite: Annotated[bool, typer.Option(help="Overwrite existing summaries")] = False,
+) -> None:
+    """Batch vision scores analysis for all drugs (optionally filtered by cell name), using the agent."""
+    import pathlib
+    # Configure custom paths if provided
+    if custom_data_dir or custom_results_dir:
+        typer.echo("🔧 Configuring custom paths...")
+        config_kwargs = {}
+        if custom_data_dir:
+            config_kwargs["data_dir"] = custom_data_dir
+        if custom_results_dir:
+            config_kwargs["results_dir"] = custom_results_dir
+        configure_paths(**config_kwargs)
+        paths = get_paths()
+        typer.echo(f"  Data directory: {paths.data_dir}")
+        typer.echo(f"  Results directory: {paths.results_dir}")
+    else:
+        paths = get_paths()
+
+    # Set defaults based on provider
+    if model is None:
+        if provider == "openai":
+            model = "gpt-4o-mini"
+        elif provider == "anthropic":
+            model = "claude-3-5-sonnet-20241022"
+        elif provider == "lambda":
+            model = "hermes-3-llama-3.1-405b-fp8"
+        else:
+            typer.echo(f"Unknown provider: {provider}", err=True)
+            raise typer.Exit(1)
+
+    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
+    source = source_map.get(provider)
+
+    # Load drugs from CSV
+    drugs_csv = paths.drugs_file
+    df = pd.read_csv(drugs_csv)
+    drugs = df["drug"].unique().tolist()
+
+    # Prepare output directory
+    output_dir = paths.results_dir / "summaries"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    typer.echo(f"🔬 Batch Vision Scores Analysis (Agent) - {provider.title()} ({model})")
+    typer.echo(f"Processing {len(drugs)} drugs...")
+    typer.echo(f"Results will be saved in: {output_dir}")
+
+    # Create agent (vision scores tool is added by default)
+    from tahoe_agent import BaseAgent
+    import typing
+
+    drugs = drugs[:3]
+
+    for drug in drugs:
+        agent = BaseAgent(
+            llm=model,
+            source=typing.cast(SourceType, source),
+            temperature=0.7,
+            tool_config={"drug_name": drug},
+        )
+
+        summary_path = output_dir / f"{drug}.txt"
+        if summary_path.exists() and not overwrite:
+            typer.echo(f"[batch_vision_scores] Skipping {drug} (already exists)")
+            continue
+        typer.echo(f"[batch_vision_scores] Analyzing drug: {drug} (cell: {cell_name})")
+        try:
+            # Build the same prompt as in vision_scores
+            prompt = f"Use the analyze_vision_scores tool to analyze the vision scores for cell '{cell_name}' and drug '{drug}'. Show me the top features and provide insights about the results."
+            log, response = agent.run(prompt)
+            with open(summary_path, "w") as f:
+                f.write(response)
+            typer.echo(f"[batch_vision_scores] Saved result for {drug} to {summary_path}")
+        except Exception as e:
+            typer.echo(f"[batch_vision_scores] Error for {drug}: {e}", err=True)
+
+    # After batch is done, run embedding comparison
+    typer.echo("\n[batch_vision_scores] Running embedding comparison on generated summaries...")
+    from benchmark.compare_embeddings import compare_embeddings
+    compare_embeddings(output_dir, drugs_csv, output_dir)
+    typer.echo(f"[batch_vision_scores] Embedding comparison complete. Plots saved in: {output_dir}")
 
 if __name__ == "__main__":
     app()

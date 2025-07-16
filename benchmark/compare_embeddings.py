@@ -6,11 +6,11 @@ import seaborn as sns
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.manifold import TSNE
+import pathlib
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 MODEL_NAME = "all-MiniLM-L6-v2"
-DRUG_METADATA = "/Users/rohit/Desktop/tahoe_agent/benchmark/drug_metadata.csv"
 
 _model = None
 
@@ -25,13 +25,31 @@ def embed_summary(summary):
     embedding = model.encode(summary, convert_to_numpy = True)
     return embedding
 
-def main():
-    df = pd.read_csv(DRUG_METADATA)
+def compare_embeddings(summary_dir, drugs_csv, output_dir=None):
+    summary_dir = pathlib.Path(summary_dir)
+    drugs_csv = pathlib.Path(drugs_csv)
+    if output_dir is None:
+        output_dir = pathlib.Path(".")
+    else:
+        output_dir = pathlib.Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
+    df = pd.read_csv(drugs_csv)
     drugs = df["drug"].tolist()
     moas = df["moa-fine"].tolist()
 
-    summaries = [f"This is a summary for {drug}. It describes the effect of the drug on gene expression and biological pathways. Mechanism: {moa}." for drug, moa in zip(drugs, moas)]
+    summaries = []
+    missing = []
+    for drug in drugs:
+        summary_path = summary_dir / f"{drug}.txt"
+        if summary_path.exists():
+            with open(summary_path, "r") as f:
+                summaries.append(f.read())
+        else:
+            summaries.append("")
+            missing.append(drug)
+    if missing:
+        print(f"[compare_embeddings] Warning: Missing summaries for {len(missing)} drugs: {missing}")
 
     embeddings = np.stack([embed_summary(summary) for summary in summaries])
 
@@ -54,7 +72,7 @@ def main():
     ax.set_ylabel("density")
     ax.legend()
     
-    fig.savefig("similarity_distribution.png")
+    fig.savefig(output_dir / "similarity_distribution.png")
 
     # --- visualization of embedding space for the sentence transformer ---
 
@@ -80,7 +98,4 @@ def main():
     ax.legend(bbox_to_anchor = (1.05, 1), loc = "upper left")
     fig.tight_layout()
 
-    fig.savefig("tsne_embeddings.png")
-
-if __name__ == "__main__":
-    main()
+    fig.savefig(output_dir / "tsne_embeddings.png")
