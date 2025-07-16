@@ -19,7 +19,7 @@ class VisionScoresArgs(BaseModel):
         description=f"Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines.",
     )
 
-
+@tool(args_schema=VisionScoresArgs)
 def analyze_signatures(
     adata: ad.AnnData,
     drug_name: str,
@@ -29,7 +29,7 @@ def analyze_signatures(
     """Analyze drug signatures for a specific drug and concentration, with or without cell line.
 
     Args:
-        adata: AnnData object with vision scores
+        adata: AnnData object with vision scores in layers['scores']
         drug_name: Name of the drug to analyze
         cell_name: Name of the cell to analyze. If None, analyze across all cell lines.
         concentration: Drug concentration to filter on (default: 5.0)
@@ -37,6 +37,9 @@ def analyze_signatures(
     Returns:
         Dictionary containing top_250, bottom_250 signatures, drug_name, and optionally cell_name
     """
+    # Get the scores matrix from layers
+    scores_matrix = adata.layers['scores']
+    
     # Initialize variables
     all_signatures: np.ndarray
     scores: np.ndarray
@@ -44,13 +47,13 @@ def analyze_signatures(
 
     if cell_name is None:
         # Case 1: Analyze across all cell lines
-        mask = (adata.obs[VisionScoreColumns.DRUG] == drug_name) & (
-            adata.obs[VisionScoreColumns.CONCENTRATION] == concentration
+        mask = (adata.obs['drug'] == drug_name) & (
+            adata.obs['concentration'] == concentration
         )
 
         if not mask.any():
-            available_drugs = adata.obs[VisionScoreColumns.DRUG].unique()[:10]
-            available_concs = adata.obs[VisionScoreColumns.CONCENTRATION].unique()
+            available_drugs = adata.obs['drug'].unique()[:10]
+            available_concs = adata.obs['concentration'].unique()
             raise ValueError(
                 f"No data found for drug '{drug_name}' at concentration {concentration}. "
                 f"Available drugs: {list(available_drugs)}, "
@@ -58,7 +61,7 @@ def analyze_signatures(
             )
 
         # Get data for this drug at specified concentration across all cell lines
-        data = adata.X[mask, :]
+        data = scores_matrix[mask, :]
 
         # Convert to dense array if sparse
         if hasattr(data, "toarray"):
@@ -74,18 +77,18 @@ def analyze_signatures(
     else:
         # Case 2: Analyze specific drug-cell combination
         mask = (
-            (adata.obs[VisionScoreColumns.DRUG] == drug_name)
-            & (adata.obs[VisionScoreColumns.CELL_NAME] == cell_name)
-            & (adata.obs[VisionScoreColumns.CONCENTRATION] == concentration)
+            (adata.obs['drug'] == drug_name)
+            & (adata.obs['cell_line'] == cell_name)  # Note: cell_line not cell_name
+            & (adata.obs['concentration'] == concentration)
         )
 
         if not mask.any():
             available_cells = adata.obs[
-                adata.obs[VisionScoreColumns.DRUG] == drug_name
-            ][VisionScoreColumns.CELL_NAME].unique()[:10]
+                adata.obs['drug'] == drug_name
+            ]['cell_line'].unique()[:10]
             available_concs = adata.obs[
-                adata.obs[VisionScoreColumns.DRUG] == drug_name
-            ][VisionScoreColumns.CONCENTRATION].unique()
+                adata.obs['drug'] == drug_name
+            ]['concentration'].unique()
             raise ValueError(
                 f"No data found for drug '{drug_name}', cell '{cell_name}' at concentration {concentration}. "
                 f"Available cells for this drug: {list(available_cells)}, "
@@ -93,7 +96,7 @@ def analyze_signatures(
             )
 
         # Get the specific data point(s) and convert to dense array if needed
-        data = adata.X[mask, :]
+        data = scores_matrix[mask, :]
         if hasattr(data, "toarray"):
             data = data.toarray()
 
@@ -140,7 +143,6 @@ def analyze_signatures(
     }
 
     return result
-
 
 @tool(args_schema=VisionScoresArgs)
 def analyze_vision_scores(
