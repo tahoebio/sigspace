@@ -19,13 +19,14 @@ class VisionScoresArgs(BaseModel):
         description=f"Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines.",
     )
 
-@tool(args_schema=VisionScoresArgs)
 def analyze_signatures(
     adata: ad.AnnData,
     drug_name: str,
-    cell_name: Optional[str] = None,
     concentration: float = 5.0,
+    cell_name: Optional[str] = None,
 ) -> Dict[str, Any]:
+
+    print ("Here is the drug name: ", drug_name)
     """Analyze drug signatures for a specific drug and concentration, with or without cell line.
 
     Args:
@@ -45,8 +46,11 @@ def analyze_signatures(
     scores: np.ndarray
     total_analyzed: int
 
+    if cell_name == 'None':
+        cell_name = None
+
     if cell_name is None:
-        # Case 1: Analyze across all cell lines
+        print("Analyzing across all cell lines")
         mask = (adata.obs['drug'] == drug_name) & (
             adata.obs['concentration'] == concentration
         )
@@ -60,20 +64,19 @@ def analyze_signatures(
                 f"Available concentrations: {list(available_concs)}"
             )
 
-        # Get data for this drug at specified concentration across all cell lines
-        data = scores_matrix[mask, :]
+        # Convert mask to numpy array
+        mask_np = mask.to_numpy()
 
-        # Convert to dense array if sparse
+        # Index the scores matrix with numpy mask
+        data = scores_matrix[mask_np, :]
+
         if hasattr(data, "toarray"):
             data = data.toarray()
 
-        # Create repeated signature names array matching the data shape
-        all_signatures = np.repeat(adata.var_names, data.shape[0])
-
-        # Flatten all vision scores across cell lines into a 1D array
-        scores = data.flatten()
-        total_analyzed = len(scores)
-
+        # Median across all cell lines per signature
+        scores = np.median(data, axis=0)
+        all_signatures = adata.var_names
+        total_analyzed = data.shape[0]
     else:
         # Case 2: Analyze specific drug-cell combination
         mask = (
@@ -107,7 +110,7 @@ def analyze_signatures(
         # Since we filtered by cell line, drug and concentration,
         # we can just flatten the array to get 1D scores
         scores = data.flatten()
-        total_analyzed = sum(mask)
+        total_analyzed = mask.sum()
 
         assert scores.ndim == all_signatures.ndim
 
@@ -168,6 +171,7 @@ def analyze_vision_scores(
     try:
         # Get path configuration and load data
         paths = get_paths()
+        
 
         # Use default vision scores file
         file_path = paths.vision_diff_file
@@ -186,7 +190,8 @@ def analyze_vision_scores(
             return f"Error: Missing required columns: {missing_cols}"
 
         # Analyze signatures
-        signatures = analyze_signatures(adata, drug_name, cell_name, concentration=5.0)
+        concentration = 5.0
+        signatures = analyze_signatures(adata, drug_name, concentration, cell_name)
 
         # Create header based on whether cell_name is provided
         if cell_name is None:
