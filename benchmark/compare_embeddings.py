@@ -44,6 +44,8 @@ def main():
         for j in range(i + 1, len(drugs)):
             (same_moa if moas[i] == moas[j] else different_moa).append(similarity_matrix[i, j])
 
+    # --- distribution of cosine similarity scores for same vs. different moa's ---
+
     fig, ax = plt.subplots(figsize = (8, 5))
     sns.histplot(same_moa, color = "blue", label = "same moa", kde = True, stat = "density", bins = 30, alpha = 0.6, ax = ax)
     sns.histplot(different_moa, color = "red", label = "different moa", kde = True, stat = "density", bins = 30, alpha = 0.6, ax = ax)
@@ -54,6 +56,8 @@ def main():
     
     fig.savefig("similarity_distribution.png")
 
+    # --- visualization of embedding space for the sentence transformer ---
+
     tsne = TSNE(n_components = 2, random_state = 42, perplexity = 30)
     tsne_embeddings = tsne.fit_transform(embeddings)
 
@@ -61,19 +65,19 @@ def main():
 
     unique_moas = list(sorted(set(moas)))
     palette = sns.color_palette("hls", len(unique_moas))
-    color_map = {moa: palette[i] for i, moa in enumerate(unique_moas)}
+    color_map = {moa: f"#{int(palette[i][0]*255):02x}{int(palette[i][1]*255):02x}{int(palette[i][2]*255):02x}" for i, moa in enumerate(unique_moas)}
 
     for moa in unique_moas:
         indices = [i for i, m in enumerate(moas) if m == moa]
         ax.scatter(tsne_embeddings[indices, 0], 
                    tsne_embeddings[indices, 1], 
-                   label = moa, color = color_map[moa], alpha = 0.7, s = 30)
+                   label = moa, c = color_map[moa], alpha = 0.7, s = 30)
     
     ax.set_xlabel("tsne 1")
     ax.set_ylabel("tsne 2")
     ax.legend()
 
-    ax.legend(bbox_to_anchor = (1.05, 1), loc = "upper left", borderaxespad = 0.)
+    ax.legend(bbox_to_anchor = (1.05, 1), loc = "upper left")
     fig.tight_layout()
 
     fig.savefig("tsne_embeddings.png")
