@@ -11,7 +11,7 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import END, StateGraph
 
 from tahoe_agent.agent._prompts import SYSTEM_PROMPT
 from tahoe_agent.llm import get_llm, SourceType
@@ -129,348 +129,137 @@ class BaseAgent:
         ]
 
     def configure(self) -> None:
-        """Configure the agent workflow as a simple static DAG: prompt -> tool_calling -> retrieval."""
-        # Generate system prompt for native tools
-        tool_descriptions = []
-        for tool in self.native_tools:
-            tool_descriptions.append(f"**{tool.name}**: {tool.description}")
-
-        tools_section = (
-            "\n".join(tool_descriptions) if tool_descriptions else "No tools available"
-        )
-
+        """Configures the agent's workflow for vision analysis and drug ranking."""
+        tool_descriptions = [
+            f"**{t.name}**: {t.description}" for t in self.native_tools
+        ]
+        tools_section = "\n".join(tool_descriptions) or "No tools available"
         self.system_prompt = SYSTEM_PROMPT.format(tools_section=tools_section)
 
-        # Create the workflow as a simple static DAG
         workflow = StateGraph(AgentState)
 
-        def prompt_node(state: AgentState) -> AgentState:
-            """Process the user prompt and determine tool needs."""
-            print("[DEBUG] prompt_node: Processing user input")
+        # Node 1: Plan the next step, which may involve calling a tool.
+        def plan_step(state: AgentState) -> AgentState:
             messages = [SystemMessage(content=self.system_prompt)] + state["messages"]
-
-            # Bind native tools with auto tool choice, auto doesn't work for lambda
-            llm_with_tools = self.llm.bind_tools(self.native_tools, tool_choice="any")
-
-            print(f"[DEBUG] prompt_node: Invoking LLM with {len(messages)} messages")
+            llm_with_tools = self.llm.bind_tools(
+                [analyze_vision_scores], tool_choice="any"
+            )
             response = llm_with_tools.invoke(messages)
-            print(f"[DEBUG] prompt_node: Response content: {response.content[:500]}...")
-
-            # Check if tool calls were made
-            if hasattr(response, "tool_calls") and response.tool_calls:
-                print(
-                    f"[DEBUG] prompt_node: Found {len(response.tool_calls)} tool calls"
-                )
-                for i, tool_call in enumerate(response.tool_calls):
-                    print(f"[DEBUG] prompt_node: Tool call {i}: {tool_call}")
-            else:
-                print("[DEBUG] prompt_node: No tool calls found")
-
             state["messages"].append(response)
             return state
 
-        def tool_calling_node(state: AgentState) -> AgentState:
-            """Execute vision scores tool (or other tools in the future)."""
-            print("[DEBUG] tool_calling_node: Checking for tool calls")
+        # Node 2: Execute the vision scores tool if requested by the planner.
+        def execute_vision_tool(state: AgentState) -> AgentState:
             last_message = state["messages"][-1]
-
-            # Check if there are tool calls to execute
-            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                print(
-                    f"[DEBUG] tool_calling_node: Found {len(last_message.tool_calls)} tool calls"
-                )
-
-                # Execute each tool call
-                for tool_call in last_message.tool_calls:
-                    tool_name = tool_call["name"]
-                    tool_args = tool_call["args"]
-                    tool_id = tool_call["id"]
-
-                    print(
-                        f"[DEBUG] tool_calling_node: Executing {tool_name} with args: {tool_args}"
-                    )
-
-                    # Find the tool by name
-                    tool_func = None
-                    for tool in self.native_tools:
-                        if tool.name == tool_name:
-                            tool_func = tool
-                            break
-
-                    if tool_func:
-                        try:
-                            # Special handling for vision scores (blind evaluation)
-                            if tool_name == "analyze_vision_scores":
-                                if "drug_name" in self.tool_config:
-                                    result = self._inject_drug_name_in_vision_score(
-                                        tool_func, tool_args
-                                    )
-                                    print(
-                                        f"[DEBUG] Injecting drug_name: {self.tool_config['drug_name']} in tool_args"
-                                    )
-                                else:
-                                    print(
-                                        "[DEBUG] tool_calling_node: No drug_name configured for blind evaluation"
-                                    )
-                                    result = tool_func.invoke(tool_args)
-                            else:
-                                # Execute other tools normally
-                                print(
-                                    f"[DEBUG] tool_calling_node: Executing {tool_name}."
-                                )
-                                result = tool_func.invoke(tool_args)
-
-                            print(
-                                f"[DEBUG] tool_calling_node: Tool {tool_name} result: {result[:200]}..."
-                            )
-
-                            # Create a tool message with the result
-                            from langchain_core.messages import ToolMessage
-
-                            tool_message = ToolMessage(
-                                content=result, name=tool_name, tool_call_id=tool_id
-                            )
-                            state["messages"].append(tool_message)
-
-                        except Exception as e:
-                            print(
-                                f"[DEBUG] tool_calling_node: Error executing {tool_name}: {e}"
-                            )
-                            # Create error message
-                            from langchain_core.messages import ToolMessage
-
-                            error_message = ToolMessage(
-                                content=f"Error executing {tool_name}: {str(e)}",
-                                name=tool_name,
-                                tool_call_id=tool_id,
-                            )
-                            state["messages"].append(error_message)
-                    else:
-                        print(f"[DEBUG] tool_calling_node: Tool {tool_name} not found")
-            else:
-                print("[DEBUG] tool_calling_node: No tool calls to execute")
-
-            return state
-
-        def retrieval_node(state: AgentState) -> AgentState:
-            """Generate final response based on tool results."""
-            print("[DEBUG] retrieval_node: Generating final response")
-            messages = [SystemMessage(content=self.system_prompt)] + state["messages"]
-
-            # Add a prompt to synthesize the final response if tools were used
-            last_message = state["messages"][-1]
-            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                synthesis_prompt = """
-Based on the tool execution results above, provide a comprehensive and helpful response to the user's original question.
-Synthesize the information from the tools and present it in a clear, organized way.
-"""
-                messages.append(HumanMessage(content=synthesis_prompt))
-
-            # Use LLM without tools for final response
-            print(
-                f"[DEBUG] retrieval_node: Generating synthesis with {len(messages)} messages"
-            )
-            final_response = self.llm.invoke(messages)
-            print(
-                f"[DEBUG] retrieval_node: Final response length: {len(final_response.content) if hasattr(final_response, 'content') else 'unknown'}"
-            )
-
-            state["messages"].append(final_response)
-
-            # Save the summary for drug ranking
-            if hasattr(final_response, "content") and final_response.content:
-                summary_content = str(final_response.content)
-                state["summary"] = summary_content
-                print(
-                    f"[DEBUG] retrieval_node: Saved summary: {summary_content[:200]}..."
-                )
-
-            return state
-
-        def should_do_drug_ranking(state: AgentState) -> str:
-            """Decide whether to proceed with drug ranking based on conversation state."""
-            print("[DEBUG] should_do_drug_ranking: Checking conversation state")
-
-            # Check user's original request for ranking-related keywords
-            original_message = state["messages"][0] if state["messages"] else None
-            if original_message and hasattr(original_message, "content"):
-                content = str(original_message.content).lower()
-                ranking_keywords = [
-                    "rank",
-                    "ranking",
-                    "compare",
-                    "comparison",
-                    "mechanism",
-                    "moa",
-                ]
-
-                if any(keyword in content for keyword in ranking_keywords):
-                    print(
-                        "[DEBUG] should_do_drug_ranking: Ranking keywords found in user request"
-                    )
-                    return "drug_ranking"
-
-            print("[DEBUG] should_do_drug_ranking: No drug ranking needed")
-            return "end"
-
-        def drug_ranking_node(state: AgentState) -> AgentState:
-            """Rank drugs based on the generated summary."""
-            print("[DEBUG] drug_ranking_node: Starting drug ranking")
-
-            # Check if we have a summary
-            summary = state.get("summary")
-            if not summary:
-                print("[DEBUG] drug_ranking_node: No summary available, skipping")
+            if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
                 return state
 
-            print("[DEBUG] drug_ranking_node: Ranking drugs using existing summary")
+            tool_call = last_message.tool_calls[0]
+            tool_args = tool_call["args"]
+            tool_id = tool_call["id"]
 
-            # Create a simple prompt for the LLM to use ONLY the ranking tool
-            ranking_prompt = f"""Use the rank_drugs_by_moa tool to rank drugs based on their mechanism of action similarity to the analysis summary.
+            result = self._inject_drug_name_in_vision_score(
+                analyze_vision_scores, tool_args
+            )
 
-Use the EXACT summary that was already generated (do NOT re-analyze vision scores):
+            from langchain_core.messages import ToolMessage
 
-Summary: {summary}"""
+            tool_message = ToolMessage(
+                content=result, name=analyze_vision_scores.name, tool_call_id=tool_id
+            )
+            state["messages"].append(tool_message)
+            return state
 
-            # TODO: maybe remove the system prompt here?
-            # messages = (
-            #     [SystemMessage(content=self.system_prompt)]
-            #     + state["messages"]
-            #     + [HumanMessage(content=ranking_prompt)]
-            # )
+        # Node 3: Summarize the results from the vision tool.
+        def summarize_results(state: AgentState) -> AgentState:
+            messages = [SystemMessage(content=self.system_prompt)] + state["messages"]
+            synthesis_prompt = "Based on the tool execution results, provide a comprehensive summary of the biological signatures and their implications for the drug's mechanism of action."
+            messages.append(HumanMessage(content=synthesis_prompt))
+
+            response = self.llm.invoke(messages)
+            state["messages"].append(response)
+            if hasattr(response, "content") and response.content:
+                state["summary"] = str(response.content)
+            return state
+
+        # Node 4: Rank drugs based on the summary and return structured output.
+        def rank_drugs(state: AgentState) -> AgentState:
+            summary = state.get("summary")
+            if not summary:
+                return state
+
+            # Invoke ranking tool to get candidate drugs
+            ranking_prompt = f"Use the rank_drugs_by_moa tool to find drugs with similar mechanisms of action to what is described in this summary:\n\nSummary: {summary}"
             messages = [HumanMessage(content=ranking_prompt)]
-
-            # IMPORTANT: Only bind the ranking tool, not all tools
             llm_with_ranking_tool = self.llm.bind_tools(
                 [rank_drugs_by_moa], tool_choice="required"
             )
-
-            print("[DEBUG] drug_ranking_node: Calling LLM with ONLY ranking tool")
             response = llm_with_ranking_tool.invoke(messages)
-            state["messages"].append(response)
 
-            # Execute any tool calls (should only be ranking tool)
-            if hasattr(response, "tool_calls") and response.tool_calls:
-                print(
-                    f"[DEBUG] drug_ranking_node: Executing {len(response.tool_calls)} tool calls"
-                )
+            tool_call = response.tool_calls[0]
+            result = rank_drugs_by_moa.invoke(tool_call["args"])
+            from langchain_core.messages import ToolMessage
 
-                # Only execute the first ranking tool call to avoid duplicates
-                ranking_executed = False
-                for tool_call in response.tool_calls:
-                    tool_name = tool_call["name"]
-                    tool_args = tool_call["args"]
-                    tool_id = tool_call["id"]
+            ranking_tool_message = ToolMessage(
+                content=result, name=tool_call["name"], tool_call_id=tool_call["id"]
+            )
 
-                    print(f"[DEBUG] drug_ranking_node: Executing tool: {tool_name}")
+            # Generate final ranked list with structured output
+            final_prompt = "Based on the provided drug list and the initial summary, rank the top 50 drugs by relevance. Return a structured list where each entry has the drug name and a relevance score."
+            final_messages = [ranking_tool_message, HumanMessage(content=final_prompt)]
 
-                    # Only allow ranking tool execution and only execute it once
-                    if tool_name == "rank_drugs_by_moa" and not ranking_executed:
-                        try:
-                            result = rank_drugs_by_moa.invoke(tool_args)
-                            print(
-                                "[DEBUG] drug_ranking_node: rank_drugs_by_moa executed successfully"
-                            )
+            llm_with_structured_output = self.llm.with_structured_output(DrugRankings)
+            structured_response = llm_with_structured_output.invoke(final_messages)
 
-                            from langchain_core.messages import ToolMessage
-
-                            ranking_tool_message = ToolMessage(
-                                content=result, name=tool_name, tool_call_id=tool_id
-                            )
-                            state["messages"].append(ranking_tool_message)
-                            ranking_executed = True
-                        except Exception as e:
-                            print(
-                                f"[DEBUG] drug_ranking_node: Error executing {tool_name}: {e}"
-                            )
-                    elif tool_name == "rank_drugs_by_moa" and ranking_executed:
-                        print(
-                            "[DEBUG] drug_ranking_node: Skipping duplicate ranking tool call"
-                        )
-                    else:
-                        print(
-                            f"[DEBUG] drug_ranking_node: Unexpected tool call: {tool_name} - ignoring"
-                        )
-
-                # Get final response after tool execution with structured output
-                final_messages = (
-                    [SystemMessage(content=self.system_prompt)]
-                    + [ranking_tool_message]
-                    + [
-                        HumanMessage(
-                            content="Based on the drug ranking tool results above, provide the final ranked list of drugs with their relevance scores. Return the top 100 drugs as a structured list where each entry contains the drug name and its relevance score."
-                        )
-                    ]
-                )
-
-                # Use structured output to get rankings as list of dictionaries
-                llm_with_structured_output = self.llm.with_structured_output(
-                    DrugRankings
-                )
-                structured_response = llm_with_structured_output.invoke(final_messages)
-
-                print(
-                    f"[DEBUG] drug_ranking_node: Structured response: {structured_response}"
-                )
-
-                # Ensure we have a proper DrugRankings instance
-                if isinstance(structured_response, DrugRankings):
-                    # Convert structured response to text for state storage
-                    rankings_text = (
-                        f"Drug Rankings ({len(structured_response.rankings)} drugs):\n"
+            if isinstance(structured_response, DrugRankings):
+                top_50_rankings = structured_response.rankings[:50]
+                rankings_text = (
+                    f"Top {len(top_50_rankings)} Drug Rankings:\n"
+                    + "\n".join(
+                        [
+                            f"{i+1}. {r.drug}: {r.score:.3f}"
+                            for i, r in enumerate(top_50_rankings)
+                        ]
                     )
-                    for i, ranking in enumerate(structured_response.rankings, 1):
-                        rankings_text += f"{i}. {ranking.drug}: {ranking.score:.3f}\n"
-
-                    # Store both structured and text versions
-                    state["drug_rankings"] = rankings_text
-                    state["structured_rankings"] = structured_response.rankings
-                    print("[DEBUG] drug_ranking_node: Stored final drug rankings")
-                else:
-                    # Fallback if structured output doesn't work as expected
-                    rankings_text = (
-                        f"Error: Unexpected response format: {structured_response}"
-                    )
-                    state["drug_rankings"] = rankings_text
-                    state["structured_rankings"] = None
-                    print(
-                        f"[DEBUG] drug_ranking_node: Unexpected response type: {type(structured_response)}"
-                    )
-
-                # Create AI message with the formatted rankings
-                final_response = AIMessage(content=rankings_text)
-                state["messages"].append(final_response)
+                )
+                state["drug_rankings"] = rankings_text
+                state["structured_rankings"] = top_50_rankings
             else:
-                print(
-                    "[DEBUG] drug_ranking_node: No tool calls made - this should not happen"
+                rankings_text = (
+                    f"Error: Unexpected response format: {structured_response}"
                 )
+                state["drug_rankings"] = rankings_text
 
+            state["messages"].append(AIMessage(content=rankings_text))
             return state
 
-        # Clean workflow with proper conditional branching
-        workflow.add_node("prompt", prompt_node)
-        workflow.add_node("tool_calling", tool_calling_node)
-        workflow.add_node("retrieval", retrieval_node)
-        workflow.add_node("drug_ranking", drug_ranking_node)
+        # Conditional router to decide whether to perform drug ranking.
+        def should_rank_drugs(state: AgentState) -> str:
+            original_message = state["messages"][0]
+            content = str(original_message.content).lower()
+            ranking_keywords = ["rank", "ranking", "compare", "mechanism", "moa"]
+            if any(keyword in content for keyword in ranking_keywords):
+                return "rank_drugs"
+            return "end"
 
-        # Simple edges with clean conditional logic
-        workflow.add_edge(START, "prompt")
-        workflow.add_edge("prompt", "tool_calling")
-        workflow.add_edge("tool_calling", "retrieval")
+        # Define the workflow graph
+        workflow.add_node("plan_step", plan_step)
+        workflow.add_node("execute_vision_tool", execute_vision_tool)
+        workflow.add_node("summarize_results", summarize_results)
+        workflow.add_node("rank_drugs", rank_drugs)
 
-        # Conditional edge based on conversation state
+        workflow.set_entry_point("plan_step")
+        workflow.add_edge("plan_step", "execute_vision_tool")
+        workflow.add_edge("execute_vision_tool", "summarize_results")
+
         workflow.add_conditional_edges(
-            "retrieval",
-            should_do_drug_ranking,
-            {"drug_ranking": "drug_ranking", "end": END},
+            "summarize_results",
+            should_rank_drugs,
+            {"rank_drugs": "rank_drugs", "end": END},
         )
+        workflow.add_edge("rank_drugs", END)
 
-        workflow.add_edge("drug_ranking", END)
-
-        # Compile workflow
-        self.app = workflow.compile()
-        self.app.checkpointer = self.checkpointer
-
+        self.app = workflow.compile(checkpointer=self.checkpointer)
         self.configured = True
         # mermaid_code = self.app.get_graph().draw_mermaid()
         # print(mermaid_code)
