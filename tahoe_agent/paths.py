@@ -19,7 +19,7 @@ class PathConfig:
 
     # Base directories
     data_dir: pathlib.Path = field(
-        default_factory=lambda: pathlib.Path("/Users/gpalla/Datasets/tahoe")
+        default_factory=lambda: pathlib.Path("/Users/rohit/Desktop/tahoe_data")
     )
     results_dir: pathlib.Path = field(default_factory=lambda: pathlib.Path("results"))
 
