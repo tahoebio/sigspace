@@ -47,7 +47,7 @@ def analyze_signatures(
     scores: np.ndarray
     total_analyzed: int
     
-    if cell_name == 'None':
+    if cell_name is None or cell_name == 'None':
         cell_name = None
     else:
         cell_name = CELL_NAME_TO_CELL_ID[cell_name]
