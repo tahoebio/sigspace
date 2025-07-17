@@ -179,15 +179,15 @@ def analyze_gsea_scores(
             out.append(f"**Cell Line:** {cell_name}\n")
         out.append(f"**Data File:** {file_path.name}\n")
 
-        out.append("\n## Top 10 Enrichments – UP-regulated (highest positive NES):\n")
-        for i, row in enumerate(res["pos_signatures"][:10], 1):
+        out.append("\n## Top Enrichments - UP-regulated (highest positive NES):\n")
+        for i, row in enumerate(res["pos_signatures"], 1):
             out.append(
                 f"{i:2d}. **{row['gene_set']}** — NES {row['nes']:.3f}; "
                 f"padj {row['padj']:.2e}\n"
             )
 
-        out.append("\n## Top 10 Enrichments – DOWN-regulated (most negative NES):\n")
-        for i, row in enumerate(res["neg_signatures"][:10], 1):
+        out.append("\n## Top Enrichments - DOWN-regulated (most negative NES):\n")
+        for i, row in enumerate(res["neg_signatures"], 1):
             out.append(
                 f"{i:2d}. **{row['gene_set']}** — NES {row['nes']:.3f}; "
                 f"padj {row['padj']:.2e}\n"
