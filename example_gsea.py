@@ -10,6 +10,7 @@ This example shows:
 
 Usage:
     python example_gsea.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --custom-results-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
+    python example_gsea.py drug-ranking --data-path ~/sigspace2/sid/Datasets/tahoe --custom-results-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
 """
 
 from typing import Optional
