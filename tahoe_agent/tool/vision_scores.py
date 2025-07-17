@@ -2,14 +2,14 @@
 
 from typing import Optional, Dict, Any
 
+
 import anndata as ad  # type: ignore
 import numpy as np
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from tahoe_agent.paths import get_paths
-from tahoe_agent._constants import VisionScoreColumns
-
+from tahoe_agent._constants import VisionScoreColumns, CELL_NAME_TO_CELL_ID
 
 class VisionScoresArgs(BaseModel):
     """Schema for vision scores analysis arguments."""
@@ -19,17 +19,18 @@ class VisionScoresArgs(BaseModel):
         description=f"Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines.",
     )
 
-
 def analyze_signatures(
     adata: ad.AnnData,
     drug_name: str,
     cell_name: Optional[str] = None,
-    concentration: float = 5.0,
+    concentration: float = 5.0
 ) -> Dict[str, Any]:
+
+    print ("Here is the drug name: ", drug_name)
     """Analyze drug signatures for a specific drug and concentration, with or without cell line.
 
     Args:
-        adata: AnnData object with vision scores
+        adata: AnnData object with vision scores in layers['scores']
         drug_name: Name of the drug to analyze
         cell_name: Name of the cell to analyze. If None, analyze across all cell lines.
         concentration: Drug concentration to filter on (default: 5.0)
@@ -37,74 +38,76 @@ def analyze_signatures(
     Returns:
         Dictionary containing top_250, bottom_250 signatures, drug_name, and optionally cell_name
     """
+    # Get the scores matrix from layers
+    scores_matrix = adata.layers['scores']
+    
     # Initialize variables
     all_signatures: np.ndarray
     scores: np.ndarray
     total_analyzed: int
+    
+    if cell_name == 'None':
+        cell_name = None
+    else:
+        cell_name = CELL_NAME_TO_CELL_ID[cell_name]
 
     if cell_name is None:
-        # Case 1: Analyze across all cell lines
-        mask = (adata.obs[VisionScoreColumns.DRUG] == drug_name) & (
-            adata.obs[VisionScoreColumns.CONCENTRATION] == concentration
+        print("Analyzing across all cell lines")
+        mask = (adata.obs['drug'] == drug_name) & (
+            adata.obs['concentration'] == concentration
         )
 
         if not mask.any():
-            available_drugs = adata.obs[VisionScoreColumns.DRUG].unique()[:10]
-            available_concs = adata.obs[VisionScoreColumns.CONCENTRATION].unique()
+            available_drugs = adata.obs['drug'].unique()[:10]
+            available_concs = adata.obs['concentration'].unique()
             raise ValueError(
                 f"No data found for drug '{drug_name}' at concentration {concentration}. "
                 f"Available drugs: {list(available_drugs)}, "
                 f"Available concentrations: {list(available_concs)}"
             )
 
-        # Get data for this drug at specified concentration across all cell lines
-        data = adata.X[mask, :]
+        # Convert mask to numpy array
+        mask_np = mask.to_numpy()
 
-        # Convert to dense array if sparse
+        # Index the scores matrix with numpy mask
+        data = scores_matrix[mask_np, :]
+
         if hasattr(data, "toarray"):
             data = data.toarray()
 
-        # Create repeated signature names array matching the data shape
-        all_signatures = np.repeat(adata.var_names, data.shape[0])
-
-        # Flatten all vision scores across cell lines into a 1D array
-        scores = data.flatten()
-        total_analyzed = len(scores)
-
+        # Median across all cell lines per signature
+        scores = np.median(data, axis=0)
+        all_signatures = adata.var_names
+        total_analyzed = data.shape[0]
     else:
-        # Case 2: Analyze specific drug-cell combination
         mask = (
-            (adata.obs[VisionScoreColumns.DRUG] == drug_name)
-            & (adata.obs[VisionScoreColumns.CELL_NAME] == cell_name)
-            & (adata.obs[VisionScoreColumns.CONCENTRATION] == concentration)
+            (adata.obs['drug'] == drug_name)
+            & (adata.obs['cell_line'] == cell_name)
+            & (adata.obs['concentration'] == concentration)
         )
 
         if not mask.any():
             available_cells = adata.obs[
-                adata.obs[VisionScoreColumns.DRUG] == drug_name
-            ][VisionScoreColumns.CELL_NAME].unique()[:10]
+                adata.obs['drug'] == drug_name
+            ]['cell_line'].unique()[:10]
             available_concs = adata.obs[
-                adata.obs[VisionScoreColumns.DRUG] == drug_name
-            ][VisionScoreColumns.CONCENTRATION].unique()
+                adata.obs['drug'] == drug_name
+            ]['concentration'].unique()
             raise ValueError(
                 f"No data found for drug '{drug_name}', cell '{cell_name}' at concentration {concentration}. "
                 f"Available cells for this drug: {list(available_cells)}, "
                 f"Available concentrations: {list(available_concs)}"
             )
 
-        # Get the specific data point(s) and convert to dense array if needed
-        data = adata.X[mask, :]
+        # Convert mask to NumPy before indexing
+        data = scores_matrix[mask.to_numpy(), :]
+
         if hasattr(data, "toarray"):
             data = data.toarray()
 
-        # Create signature names array matching the flattened data shape
-        # If we have multiple replicates, repeat gene names for each replicate
         all_signatures = np.repeat(adata.var_names, data.shape[0])
-
-        # Since we filtered by cell line, drug and concentration,
-        # we can just flatten the array to get 1D scores
         scores = data.flatten()
-        total_analyzed = sum(mask)
+        total_analyzed = mask.sum()
 
         assert scores.ndim == all_signatures.ndim
 
@@ -141,7 +144,6 @@ def analyze_signatures(
 
     return result
 
-
 @tool(args_schema=VisionScoresArgs)
 def analyze_vision_scores(
     cell_name: Optional[str] = None,
@@ -177,7 +179,7 @@ def analyze_vision_scores(
         if missing_cols:
             return f"Error: Missing required columns: {missing_cols}"
 
-        signatures = analyze_signatures(adata, drug_name, cell_name, concentration=5.0)
+        signatures = analyze_signatures(adata, drug_name, cell_name)
 
         # Use a list to build the string parts for better performance and readability
         output_parts = []
