@@ -3,6 +3,11 @@ from omegaconf import DictConfig
 from tahoe_agent.agent.base_agent import BaseAgent
 from tahoe_agent.paths import configure_paths, get_paths
 from tahoe_agent.logging_config import get_logger
+import pandas as pd
+import os
+from pathlib import Path
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
 logger = get_logger()
 
@@ -12,20 +17,17 @@ logger = get_logger()
 )
 def main(cfg: DictConfig) -> None:
     """Run summary comparison experiment with different models and temperatures."""
+    logger.info("🔧 Configuring custom paths...")
+    config_kwargs = {}
+    if cfg.custom_data_dir:
+        config_kwargs["data_dir"] = cfg.custom_data_dir
+    if cfg.custom_results_dir:
+        config_kwargs["results_dir"] = Path(cfg.custom_results_dir) / cfg.model
+    configure_paths(**config_kwargs)
 
-    # Configure paths if provided
-    if cfg.custom_data_dir or cfg.custom_results_dir:
-        logger.info("🔧 Configuring custom paths...")
-        config_kwargs = {}
-        if cfg.custom_data_dir:
-            config_kwargs["data_dir"] = cfg.custom_data_dir
-        if cfg.custom_results_dir:
-            config_kwargs["results_dir"] = cfg.custom_results_dir
-        configure_paths(**config_kwargs)
-
-        paths = get_paths()
-        logger.info(f"  Data directory: {paths.data_dir}")
-        logger.info(f"  Results directory: {paths.results_dir}")
+    paths = get_paths()
+    logger.info(f"  Data directory: {paths.data_dir}")
+    logger.info(f"  Results directory: {paths.results_dir}")
 
     agent = BaseAgent(
         llm=cfg.model,
@@ -51,6 +53,46 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"\n🎯 Final Drug Rankings (Hidden drug was: {cfg.drug_name}):")
     logger.info("=" * 50)
     logger.info(response)
+    logger.info("\nSUMMARY\n")
+    logger.info(summary)
+    logger.info("\nSTRUCTURED RANKINGS\n")
+    logger.info(structured_rankings)
+
+    # Save summary
+    os.makedirs(Path(paths.results_dir), exist_ok=True)
+    summary_path = paths.get_results_file(
+        f"summary_{cfg.drug_name}_{cfg.cell_name}.txt"
+    )
+    logger.info(f"\n💾 Saving summary to {summary_path}...")
+    with open(summary_path, "w") as f:
+        f.write(summary)
+
+    # Convert structured rankings to DataFrame and save as CSV
+    if structured_rankings:
+        rankings_path = paths.get_results_file(
+            f"drugrank_{cfg.drug_name}_{cfg.cell_name}.csv"
+        )
+        logger.info(f"💾 Saving drug rankings to {rankings_path}...")
+
+        # Convert list of DrugRanking objects to DataFrame
+        rankings_data = {
+            "drug": [r.drug for r in structured_rankings],
+            "score": [r.score for r in structured_rankings],
+        }
+        rankings_df = pd.DataFrame(rankings_data)
+
+        # Save to CSV
+        rankings_df.to_csv(rankings_path, index=False)
+        logger.info("✅ Results saved successfully")
+
+    # create embeddings for the summary
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    summary_embedding = model.encode(summary)
+    embedding_path = paths.get_results_file(
+        f"embedding_{cfg.drug_name}_{cfg.cell_name}.npy"
+    )
+    logger.info(f"💾 Saving summary embedding to {embedding_path}...")
+    np.save(embedding_path, summary_embedding)
 
 
 if __name__ == "__main__":
