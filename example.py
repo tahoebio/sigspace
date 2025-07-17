@@ -195,11 +195,7 @@ def drug_ranking(
     provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
     model: Annotated[
         Optional[str], typer.Option(help="Model name")
-<<<<<<< HEAD
     ] = "llama-4-maverick-17b-128e-instruct-fp8",  # "hermes-3-llama-3.1-405b-fp8", #"deepseek-r1-671b",  #
-=======
-    ] = "deepseek-r1-671b",  # "hermes-3-llama-3.1-405b-fp8"
->>>>>>> Sid01123/structure-output
     # NEW: Path configuration options
     custom_data_dir: Annotated[
         Optional[str], typer.Option(help="Custom data directory")
