@@ -11,7 +11,10 @@ from tahoe_agent.paths import configure_paths, get_paths
 
 logger = get_logger()
 
-@hydra.main(version_base = None, config_path = "../config", config_name = "summary_comparison")
+
+@hydra.main(
+    version_base=None, config_path="../config", config_name="summary_comparison"
+)
 def main(cfg: DictConfig) -> None:
     logger.info("🔧 configuring custom paths...")
     config_kwargs = {}
@@ -27,10 +30,10 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"  results directory: {paths.results_dir}")
 
     agent = BaseAgent(
-        llm = cfg.model,
-        source = cfg.source,
-        temperature = cfg.temperature,
-        tool_config = {"drug_name": cfg.drug_name},  # Hidden from LLM
+        llm=cfg.model,
+        source=cfg.source,
+        temperature=cfg.temperature,
+        tool_config={"drug_name": cfg.drug_name},  # Hidden from LLM
     )
 
     base_prompt = f"Use the {cfg.tool} tool to analyze the gene signatures"
@@ -55,7 +58,7 @@ def main(cfg: DictConfig) -> None:
     logger.info(structured_rankings)
 
     # Save summary
-    os.makedirs(Path(paths.results_dir), exist_ok = True)
+    os.makedirs(Path(paths.results_dir), exist_ok=True)
     summary_path = paths.get_results_file(
         f"summary_{cfg.drug_name}_{cfg.cell_name}.txt"
     )
@@ -78,7 +81,7 @@ def main(cfg: DictConfig) -> None:
         rankings_df = pd.DataFrame(rankings_data)
 
         # Save to CSV
-        rankings_df.to_csv(rankings_path, index = False)
+        rankings_df.to_csv(rankings_path, index=False)
         logger.info("✅ results saved successfully")
 
     # create embeddings for the summary
@@ -88,7 +91,7 @@ def main(cfg: DictConfig) -> None:
         f"embedding_{cfg.drug_name}_{cfg.cell_name}.npz"
     )
     logger.info(f"💾 saving summary embedding to {embedding_path}...")
-    np.savez_compressed(embedding_path, embedding = summary_embedding)
+    np.savez_compressed(embedding_path, embedding=summary_embedding)
 
 
 if __name__ == "__main__":

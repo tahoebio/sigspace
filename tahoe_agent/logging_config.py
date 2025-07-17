@@ -3,6 +3,7 @@ import logging
 import pathlib
 from typing import Optional
 
+
 class TahoeLogger:
     _instance: Optional["TahoeLogger"] = None
     _logger: Optional[logging.Logger] = None
@@ -66,25 +67,32 @@ class TahoeLogger:
     def critical(self, message: str) -> None:
         self.logger.critical(message)
 
+
 def get_logger() -> logging.Logger:
     return TahoeLogger().logger
+
 
 def setup_logger(log_file: str = "tahoe_agent.log") -> logging.Logger:
     tahoe_logger = TahoeLogger()
     tahoe_logger._setup_logger(log_file)
     return tahoe_logger.logger
 
+
 def log_info(message: str) -> None:
     TahoeLogger().info(message)
+
 
 def log_error(message: str) -> None:
     TahoeLogger().error(message)
 
+
 def log_warning(message: str) -> None:
     TahoeLogger().warning(message)
 
+
 def log_debug(message: str) -> None:
     TahoeLogger().debug(message)
+
 
 def log_critical(message: str) -> None:
     TahoeLogger().critical(message)

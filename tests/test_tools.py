@@ -71,7 +71,9 @@ def test_analyze_vision_scores() -> None:
     logger.info("[test_analyze_vision_scores] " + "=" * 80)
     logger.info(f"[test_analyze_vision_scores] {result1}")
     logger.info("[test_analyze_vision_scores] " + "=" * 80)
-    logger.info("[test_analyze_vision_scores] RESULT 2 - Drug + cell (cell_name='HS-578T'):")
+    logger.info(
+        "[test_analyze_vision_scores] RESULT 2 - Drug + cell (cell_name='HS-578T'):"
+    )
     logger.info("[test_analyze_vision_scores] " + "=" * 80)
     logger.info(f"[test_analyze_vision_scores] {result2}")
     logger.info("[test_analyze_vision_scores] " + "=" * 80)

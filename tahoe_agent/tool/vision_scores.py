@@ -12,6 +12,7 @@ from tahoe_agent.paths import get_paths
 from tahoe_agent._constants import VisionScoreColumns, CELL_NAME_TO_CELL_ID
 from tahoe_agent.logging_config import get_logger
 
+
 class VisionScoresArgs(BaseModel):
     """Schema for vision scores analysis arguments."""
 
@@ -20,11 +21,12 @@ class VisionScoresArgs(BaseModel):
         description=f"Name of the cell to analyze (from {VisionScoreColumns.CELL_NAME} column). If None, analyze across all cell lines.",
     )
 
+
 def analyze_signatures(
     adata: ad.AnnData,
     drug_name: str,
     cell_name: Optional[str] = None,
-    concentration: float = 5.0
+    concentration: float = 5.0,
 ) -> Dict[str, Any]:
     logger = get_logger()
     logger.info(f"[analyze_signatures] Here is the drug name: {drug_name}")
@@ -40,27 +42,27 @@ def analyze_signatures(
         Dictionary containing top_250, bottom_250 signatures, drug_name, and optionally cell_name
     """
     # Get the scores matrix from layers
-    scores_matrix = adata.layers['scores']
-    
+    scores_matrix = adata.layers["scores"]
+
     # Initialize variables
     all_signatures: np.ndarray
     scores: np.ndarray
     total_analyzed: int
-    
-    if cell_name is None or cell_name == 'None':
+
+    if cell_name is None:
         cell_name = None
     else:
         cell_name = CELL_NAME_TO_CELL_ID[cell_name]
 
     if cell_name is None:
         logger.info("Analyzing across all cell lines")
-        mask = (adata.obs['drug'] == drug_name) & (
-            adata.obs['concentration'] == concentration
+        mask = (adata.obs[VisionScoreColumns.DRUG] == drug_name) & (
+            adata.obs[VisionScoreColumns.CONCENTRATION] == concentration
         )
 
         if not mask.any():
-            available_drugs = adata.obs['drug'].unique()[:10]
-            available_concs = adata.obs['concentration'].unique()
+            available_drugs = adata.obs[VisionScoreColumns.DRUG].unique()[:10]
+            available_concs = adata.obs[VisionScoreColumns.CONCENTRATION].unique()
             raise ValueError(
                 f"No data found for drug '{drug_name}' at concentration {concentration}. "
                 f"Available drugs: {list(available_drugs)}, "
@@ -82,18 +84,18 @@ def analyze_signatures(
         total_analyzed = data.shape[0]
     else:
         mask = (
-            (adata.obs['drug'] == drug_name)
-            & (adata.obs['cell_line'] == cell_name)
-            & (adata.obs['concentration'] == concentration)
+            (adata.obs[VisionScoreColumns.DRUG] == drug_name)
+            & (adata.obs[VisionScoreColumns.CELL_NAME] == cell_name)
+            & (adata.obs[VisionScoreColumns.CONCENTRATION] == concentration)
         )
 
         if not mask.any():
             available_cells = adata.obs[
-                adata.obs['drug'] == drug_name
-            ]['cell_line'].unique()[:10]
+                adata.obs[VisionScoreColumns.DRUG] == drug_name
+            ][VisionScoreColumns.CELL_NAME].unique()[:10]
             available_concs = adata.obs[
-                adata.obs['drug'] == drug_name
-            ]['concentration'].unique()
+                adata.obs[VisionScoreColumns.DRUG] == drug_name
+            ][VisionScoreColumns.CONCENTRATION].unique()
             raise ValueError(
                 f"No data found for drug '{drug_name}', cell '{cell_name}' at concentration {concentration}. "
                 f"Available cells for this drug: {list(available_cells)}, "
@@ -144,6 +146,7 @@ def analyze_signatures(
     }
 
     return result
+
 
 @tool(args_schema=VisionScoresArgs)
 def analyze_vision_scores(

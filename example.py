@@ -25,6 +25,7 @@ from tahoe_agent import BaseAgent
 from tahoe_agent.paths import configure_paths, get_paths  # NEW
 from tahoe_agent.llm import SourceType
 from tahoe_agent.logging_config import get_logger
+
 logger = get_logger()
 
 
@@ -133,8 +134,12 @@ def vision_scores(
 
     except Exception as e:
         logger.error(f"[vision_scores] ❌ Vision scores demo failed: {e}")
-        logger.info("[vision_scores] \n💡 Note: Make sure the h5ad files exist in the specified path:")
-        logger.info("[vision_scores]   • 20250417.diff_vision_scores_pseudobulk.public.h5ad")
+        logger.info(
+            "[vision_scores] \n💡 Note: Make sure the h5ad files exist in the specified path:"
+        )
+        logger.info(
+            "[vision_scores]   • 20250417.diff_vision_scores_pseudobulk.public.h5ad"
+        )
         logger.info("[vision_scores]   • 20250417.vision_scores_pseudobulk.public.h5ad")
         raise typer.Exit(1)
 
@@ -166,7 +171,9 @@ def basic_demo(
     }
     source = source_map.get(provider)
 
-    logger.info(f"[basic_demo] 🔬 Basic Vision Scores Demo - {provider.title()} ({model})")
+    logger.info(
+        f"[basic_demo] 🔬 Basic Vision Scores Demo - {provider.title()} ({model})"
+    )
     logger.info("[basic_demo] " + "=" * 50)
 
     try:
@@ -263,7 +270,9 @@ def drug_ranking(
         After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
         """
 
-        logger.info("[drug_ranking] 💬 Testing drug ranking with BLIND prompt (drug name hidden):")
+        logger.info(
+            "[drug_ranking] 💬 Testing drug ranking with BLIND prompt (drug name hidden):"
+        )
         logger.info(f"[drug_ranking]    Hidden drug: {drug_name}")
         logger.info(f"[drug_ranking]    Prompt: {prompt[:100]}...")
         logger.info("[drug_ranking] \n🤖 Running agent workflow...")
@@ -277,7 +286,9 @@ def drug_ranking(
                 f"[drug_ranking]   {i+1}. [{role}]: {content[:150]}{'...' if len(content) > 150 else ''}"
             )
 
-        logger.info(f"[drug_ranking] \n🎯 Final Drug Rankings (Hidden drug was: {drug_name}):")
+        logger.info(
+            f"[drug_ranking] \n🎯 Final Drug Rankings (Hidden drug was: {drug_name}):"
+        )
         logger.info("[drug_ranking] " + "=" * 50)
         logger.info(f"[drug_ranking] {response}")
 

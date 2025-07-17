@@ -83,7 +83,7 @@ class PathConfig:
             "data_dir": str(self.data_dir),
             "results_dir": str(self.results_dir),
             "vision_diff_filename": self.vision_diff_filename,
-            "vision_diff_file": str(self.vision_diff_file)
+            "vision_diff_file": str(self.vision_diff_file),
         }
 
 
@@ -131,7 +131,6 @@ def get_results_dir() -> pathlib.Path:
 def get_vision_diff_file() -> pathlib.Path:
     """Get the vision diff scores file path."""
     return get_paths().vision_diff_file
-
 
 
 def get_data_file(filename: str) -> pathlib.Path:

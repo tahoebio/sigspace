@@ -201,9 +201,13 @@ class BaseAgent:
             if hasattr(response, "content") and response.content:
                 summary_text = str(response.content)
                 state["signature_summary"] = summary_text
-                self.logger.info(f"[summarize_results] Summary generated: {summary_text}...")
+                self.logger.info(
+                    f"[summarize_results] Summary generated: {summary_text}..."
+                )
             else:
-                self.logger.warning("[summarize_results] Warning: No summary was generated.")
+                self.logger.warning(
+                    "[summarize_results] Warning: No summary was generated."
+                )
             return state
 
         # Node 4: Rank drugs based on the summary and return structured output.
@@ -211,13 +215,17 @@ class BaseAgent:
             self.logger.info("[rank_drugs] --- Ranking Drugs ---")
             summary = state.get("signature_summary")
             if not summary:
-                self.logger.error("[rank_drugs] Error: No summary available for drug ranking.")
+                self.logger.error(
+                    "[rank_drugs] Error: No summary available for drug ranking."
+                )
                 return state
 
             # Since get_drug_list takes no arguments, we can invoke it directly.
             self.logger.info("[rank_drugs] Invoking get_drug_list tool directly...")
             drug_list_str = get_drug_list.invoke({})
-            self.logger.info(f"[rank_drugs] Result from get_drug_list tool: {str(drug_list_str)[:300]}...")
+            self.logger.info(
+                f"[rank_drugs] Result from get_drug_list tool: {str(drug_list_str)[:300]}..."
+            )
 
             # Generate final ranked list with structured output
             final_messages = [
@@ -230,12 +238,16 @@ class BaseAgent:
 
             self.logger.info("[rank_drugs] Messages content for final ranking LLM:")
             for msg in final_messages:
-                self.logger.info(f"[rank_drugs] [{msg.__class__.__name__}]: {msg.content}...")
+                self.logger.info(
+                    f"[rank_drugs] [{msg.__class__.__name__}]: {msg.content}..."
+                )
 
             llm_with_structured_output = self.llm.with_structured_output(DrugRankings)
             structured_response = llm_with_structured_output.invoke(final_messages)
 
-            self.logger.info(f"[rank_drugs] Structured response from ranking LLM: {structured_response}")
+            self.logger.info(
+                f"[rank_drugs] Structured response from ranking LLM: {structured_response}"
+            )
 
             if isinstance(structured_response, DrugRankings):
                 top_50_rankings = structured_response.rankings[:50]
