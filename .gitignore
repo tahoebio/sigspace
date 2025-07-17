@@ -170,3 +170,6 @@ cython_debug/
 # hydra
 multirun/
 outputs/
+
+# output
+results/

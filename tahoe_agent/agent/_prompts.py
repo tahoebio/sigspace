@@ -10,17 +10,31 @@ CRITICAL INSTRUCTIONS:
 
 Always be helpful, accurate, and clear in your responses."""
 
+SUMMARY_PROMPT = """Tool Execution Results: {tool_output}
+
+Based on these results, please:
+1. Summarize the key findings
+2. Identify the likely mechanisms of action and biological pathways involved
+"""
+
 DRUG_RANKING_PROMPT = """
-Based on the provided drug list and the initial summary, rank the top 50 drugs by relevance. There are two important rules that you need to follow:
+Based on the provided drug list and the initial summary, rank the top 100 drugs by relevance. Score each drug based on the likelihood of having the specified mechanisms of action and targeting the relevant pathways mentioned in the summary.
+
+There are three important rules that you need to follow:
+
+1. **Mechanism of Action Scoring**: For each drug, evaluate how likely it is to have the mechanisms of action described in the initial summary. Assign a higher score to drugs that clearly demonstrate these mechanisms.
+
+2. **Pathway Targeting Scoring**: Assess how well each drug targets the specific biological pathways mentioned in the summary. Prioritize drugs that directly interact with or modulate these pathways.
+
+3. **Drug List Limitation**: Only rank drugs that are explicitly listed in the provided drug list. Do not include any drugs that are not in the list.
+
+For each drug in your ranking, provide:
+- Drug name
+- Relevance score (0-100)
 
 Here is the summary:
 {summary}
 
 Here is the list of available drugs to rank:
 {drug_list}
-
-1. You can only use the drugs present in the drug list that is given to you to rank the drugs.
-2. You can not use any other drugs in the top 50 ranking, you can only use the drugs in the drug list.
-3. You need to rank the drugs based on what you know about their mechanism of action and how that matches the summary that you are given.
-4. Do not hallucinate, you can only use the drugs in the drug list to rank the drugs.
 """

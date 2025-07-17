@@ -24,8 +24,7 @@ class PathConfig:
     results_dir: pathlib.Path = field(default_factory=lambda: pathlib.Path("results"))
 
     # Vision scores specific files
-    vision_diff_filename: str = "20250417.diff_vision_scores_pseudobulk.public.h5ad"
-    vision_pseudo_filename: str = "20250417.vision_scores_pseudobulk.public.h5ad"
+    vision_diff_filename: str = "vision_scores_sparse_all.h5ad"
     drugs_filename: str = "drugs.csv"
     gsea_scores_filename: str = "gsea_all_sparse.h5ad"
 
@@ -38,8 +37,6 @@ class PathConfig:
             self.results_dir = pathlib.Path(env_results_dir)
         if env_vision_diff := os.getenv("TAHOE_VISION_DIFF_FILE"):
             self.vision_diff_filename = env_vision_diff
-        if env_vision_pseudo := os.getenv("TAHOE_VISION_PSEUDO_FILE"):
-            self.vision_pseudo_filename = env_vision_pseudo
         if env_drugs := os.getenv("TAHOE_DRUGS_FILE"):
             self.drugs_filename = env_drugs
         if env_gsea_scores := os.getenv("TAHOE_GSEA_SCORES_FILE"):
@@ -49,11 +46,6 @@ class PathConfig:
     def vision_diff_file(self) -> pathlib.Path:
         """Get the full path to the vision diff scores file."""
         return self.data_dir / self.vision_diff_filename
-
-    @property
-    def vision_pseudo_file(self) -> pathlib.Path:
-        """Get the full path to the vision pseudo scores file."""
-        return self.data_dir / self.vision_pseudo_filename
 
     @property
     def drugs_file(self) -> pathlib.Path:
@@ -99,10 +91,8 @@ class PathConfig:
             "data_dir": str(self.data_dir),
             "results_dir": str(self.results_dir),
             "vision_diff_filename": self.vision_diff_filename,
-            "vision_pseudo_filename": self.vision_pseudo_filename,
-            "gsea_scores_filename": self.gsea_scores_filename,
             "vision_diff_file": str(self.vision_diff_file),
-            "vision_pseudo_file": str(self.vision_pseudo_file),
+            "gsea_scores_filename": self.gsea_scores_filename,
             "gsea_scores_file": str(self.gsea_scores_file),
         }
 
@@ -152,11 +142,6 @@ def get_vision_diff_file() -> pathlib.Path:
     """Get the vision diff scores file path."""
     return get_paths().vision_diff_file
 
-
-def get_vision_pseudo_file() -> pathlib.Path:
-    """Get the vision pseudo scores file path."""
-    return get_paths().vision_pseudo_file
-
 def get_gsea_scores_file() -> pathlib.Path:
     """Get the GSEA scores file path."""
     return get_paths().gsea_scores_file
@@ -175,5 +160,4 @@ def get_results_file(filename: str) -> pathlib.Path:
 DATA_DIR = get_data_dir()
 RESULTS_DIR = get_results_dir()
 VISION_DIFF_FILE = get_vision_diff_file()
-VISION_PSEUDO_FILE = get_vision_pseudo_file()
 GSEA_SCORE_FILE = get_gsea_scores_file()

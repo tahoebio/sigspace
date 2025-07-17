@@ -14,7 +14,11 @@ from langchain_core.messages import (
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from tahoe_agent.agent._prompts import SYSTEM_PROMPT, DRUG_RANKING_PROMPT
+from tahoe_agent.agent._prompts import (
+    SYSTEM_PROMPT,
+    DRUG_RANKING_PROMPT,
+    SUMMARY_PROMPT,
+)
 from tahoe_agent.llm import get_llm, SourceType
 from tahoe_agent.model.retriever import Retriever
 
@@ -26,6 +30,7 @@ from tahoe_agent.utils import pretty_print
 from functools import partial
 from pydantic import BaseModel, Field
 from typing import List as TypingList
+from tahoe_agent.logging_config import get_logger
 
 
 class DrugRanking(BaseModel):
@@ -47,7 +52,7 @@ class AgentState(TypedDict):
     """State of the agent."""
 
     messages: List[BaseMessage]
-    summary: Optional[str]  # Store the summary from retrieval step
+    signature_summary: Optional[str]  # Store the summary from retrieval step
     drug_rankings: Optional[str]  # Store the final drug ranking results
     structured_rankings: Optional[
         TypingList[DrugRanking]
@@ -121,6 +126,7 @@ class BaseAgent:
 
         # Logging
         self.log: List[tuple[str, str]] = []
+        self.logger = get_logger()
 
         # Configure the agent
         self.configure()
@@ -169,7 +175,7 @@ class BaseAgent:
 
             from langchain_core.messages import ToolMessage
 
-            print("[LOG] Tool message: ", result)
+            self.logger.info("[execute_vision_tool] Tool message: %s", result)
             tool_message = ToolMessage(
                 content=result, name=analyze_vision_scores.name, tool_call_id=tool_id
             )
@@ -201,10 +207,12 @@ class BaseAgent:
 
         # Node 3: Summarize the results from the vision tool.
         def summarize_results(state: AgentState) -> AgentState:
-            print("\n[--- Summarizing Results ---]")
+            self.logger.info("[summarize_results] --- Summarizing Results ---")
             tool_output = state["messages"][-1].content
 
-            messages = [HumanMessage(content=f"Tool Execution Results: {tool_output}")]
+            messages = [
+                HumanMessage(content=SUMMARY_PROMPT.format(tool_output=tool_output))
+            ]
 
             # DO NOT REMOVE THIS COMMENTED CODE
             # print("\n[--- Message Contents ---]")
@@ -216,20 +224,35 @@ class BaseAgent:
             #         print("No content attribute")
 
             response = self.summarizer_llm.invoke(messages)
-        
+            state["messages"].append(response)
+            if hasattr(response, "content") and response.content:
+                summary_text = str(response.content)
+                state["signature_summary"] = summary_text
+                self.logger.info(
+                    f"[summarize_results] Summary generated: {summary_text}..."
+                )
+            else:
+                self.logger.warning(
+                    "[summarize_results] Warning: No summary was generated."
+                )
+            return state
 
         # Node 4: Rank drugs based on the summary and return structured output.
         def rank_drugs(state: AgentState) -> AgentState:
-            print("\n[--- Ranking Drugs ---]")
-            summary = state.get("summary")
+            self.logger.info("[rank_drugs] --- Ranking Drugs ---")
+            summary = state.get("signature_summary")
             if not summary:
-                print("Error: No summary available for drug ranking.")
+                self.logger.error(
+                    "[rank_drugs] Error: No summary available for drug ranking."
+                )
                 return state
 
             # Since get_drug_list takes no arguments, we can invoke it directly.
-            print("Invoking get_drug_list tool directly...")
+            self.logger.info("[rank_drugs] Invoking get_drug_list tool directly...")
             drug_list_str = get_drug_list.invoke({})
-            print(f"Result from get_drug_list tool:\n{str(drug_list_str)[:300]}...")
+            self.logger.info(
+                f"[rank_drugs] Result from get_drug_list tool: {str(drug_list_str)[:300]}..."
+            )
 
             # Generate final ranked list with structured output
             final_messages = [
@@ -240,14 +263,18 @@ class BaseAgent:
                 ),
             ]
 
-            print("\nMessages content for final ranking LLM:")
+            self.logger.info("[rank_drugs] Messages content for final ranking LLM:")
             for msg in final_messages:
-                print(f"[{msg.__class__.__name__}]: {msg.content}...")
+                self.logger.info(
+                    f"[rank_drugs] [{msg.__class__.__name__}]: {msg.content}..."
+                )
 
             llm_with_structured_output = self.llm.with_structured_output(DrugRankings)
             structured_response = llm_with_structured_output.invoke(final_messages)
 
-            print(f"Structured response from ranking LLM:\n{structured_response}")
+            self.logger.info(
+                f"[rank_drugs] Structured response from ranking LLM: {structured_response}"
+            )
 
             if isinstance(structured_response, DrugRankings):
                 top_50_rankings = structured_response.rankings[:50]
@@ -360,6 +387,7 @@ class BaseAgent:
                 if "messages" in step and step["messages"]:
                     message = step["messages"][-1]
                     role, content = pretty_print(message)
+                    self.logger.info(f"[run] {role}: {content}")
                     self.log.append((role, content))
                     if isinstance(message, AIMessage):
                         # Extract content from AI messages, regardless of tool calls
@@ -384,8 +412,12 @@ class BaseAgent:
             ):
                 structured_rankings = final_state["structured_rankings"]
 
-            if final_state and "summary" in final_state and final_state["summary"]:
-                summary = final_state["summary"]
+            if (
+                final_state
+                and "signature_summary" in final_state
+                and final_state["signature_summary"]
+            ):
+                summary = final_state["signature_summary"]
 
         except Exception as e:
             error_msg = f"Error during execution: {str(e)}"
