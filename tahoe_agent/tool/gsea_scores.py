@@ -194,7 +194,7 @@ def analyze_gsea_scores(
             )
 
         context = (
-            "aggregated statistics across retained lines"
+            "aggregated statistics (mean NES and median padj) across all cell lines"
             if cell_name is None
             else "mean of replicates for this line"
         )
