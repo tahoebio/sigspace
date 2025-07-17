@@ -43,6 +43,7 @@ def main(cfg: DictConfig) -> None:
     prompt = f"""{base_prompt}.
 
     Show me the top features and provide insights about the results.
+    After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
     """
 
     logger.info("🤖 Running agent workflow...")
