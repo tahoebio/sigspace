@@ -159,76 +159,65 @@ def analyze_vision_scores(
     Returns:
         Formatted string with analysis results or error message
     """
-    # Input validation - drug_name should be injected by the agent
     if not drug_name or not isinstance(drug_name, str):
         return "Error: Drug name must be configured in the agent system for blind evaluation"
 
     try:
-        # Get path configuration and load data
         paths = get_paths()
-
-        # Use default vision scores file
         file_path = paths.vision_diff_file
-
         if not file_path.exists():
             return f"Error: Vision scores file not found: {file_path}"
 
-        # Load data and check required columns
         adata = ad.read_h5ad(file_path)
         required_cols = [VisionScoreColumns.DRUG, VisionScoreColumns.CONCENTRATION]
-        if cell_name is not None:
+        if cell_name:
             required_cols.append(VisionScoreColumns.CELL_NAME)
 
         missing_cols = [col for col in required_cols if col not in adata.obs.columns]
         if missing_cols:
             return f"Error: Missing required columns: {missing_cols}"
 
-        # Analyze signatures
         signatures = analyze_signatures(adata, drug_name, cell_name, concentration=5.0)
 
-        # Create header based on whether cell_name is provided
+        # Use a list to build the string parts for better performance and readability
+        output_parts = []
+
         if cell_name is None:
-            header = f"""# Vision Scores Analysis Results (Across All Cell Lines)
-
-**Concentration:** {signatures['concentration']}
-**Data File:** {file_path.name}
-**Total Cell Lines Analyzed:** {signatures['total_analyzed']}"""
+            output_parts.append(
+                "# Vision Scores Analysis Results (Across All Cell Lines)\n"
+            )
+            output_parts.append(f"**Data File:** {file_path.name}\n")
         else:
-            header = f"""# Vision Scores Analysis Results (Specific Cell Line)
+            output_parts.append(
+                "# Vision Scores Analysis Results (Specific Cell Line)\n"
+            )
+            output_parts.append(f"**Cell Line:** {cell_name}\n")
+            output_parts.append(f"**Data File:** {file_path.name}\n")
 
-**Cell Line:** {cell_name}
-**Concentration:** {signatures['concentration']}
-**Data File:** {file_path.name}
-**Data Points Used:** {signatures['total_analyzed']}"""
+        output_parts.append("\n## Top 250 Signatures (Highest Scores):\n")
+        for i, item in enumerate(signatures["top_250"], 1):
+            output_parts.append(f"{i}. {item['feature']}: {item['score']:.6f}\n")
 
-        # Add signatures (same format for both cases)
-        result = header + "\n\n## Top 10 Signatures (Highest Absolute Scores):\n\n"
+        output_parts.append("\n## Bottom 250 Signatures (Lowest Scores):\n")
+        for i, item in enumerate(signatures["bottom_250"], 1):
+            output_parts.append(f"{i}. {item['feature']}: {item['score']:.6f}\n")
 
-        for i, item in enumerate(signatures["top_250"][:10], 1):
-            result += f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n"
-
-        result += "\n## Bottom 10 Signatures (Lowest Absolute Scores):\n\n"
-
-        for i, item in enumerate(signatures["bottom_250"][:10], 1):
-            result += f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n"
-
-        # Add summary (same for both cases)
         if cell_name is None:
             analysis_context = "mean scores across all cell lines for this drug"
         else:
             analysis_context = "specific drug-cell line combination"
-
-        result += f"""
+        summary_text = f"""
 ## Analysis Summary:
 - **Total signatures analyzed:** {len(adata.var_names)}
-- **Top 250 signatures identified** (showing top 10 above)
-- **Bottom 250 signatures identified** (showing bottom 10 above)
+- **Top 250 signatures identified**
+- **Bottom 250 signatures identified**
 - **Analysis based on {analysis_context}**
 
 The vision scores represent the importance or activity level of different biological pathways and gene sets for this drug{' across all tested cell lines' if cell_name is None else ' in this specific cell line'}.
 """
+        output_parts.append(summary_text)
 
-        return result
+        return "".join(output_parts)
 
     except ValueError as e:
         return f"Error: {str(e)}"

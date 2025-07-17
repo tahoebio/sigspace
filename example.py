@@ -16,13 +16,15 @@ Usage:
     python example.py paths  # NEW: Show path configuration
 """
 
-from typing import Optional
+from typing import Optional, Dict
 
 import typer
 from typing_extensions import Annotated
 
 from tahoe_agent import BaseAgent
 from tahoe_agent.paths import configure_paths, get_paths  # NEW
+from tahoe_agent.llm import SourceType
+
 
 app = typer.Typer(
     help="Tahoe Agent Vision Scores Demo - Analyze vision scores with different AI providers"
@@ -78,7 +80,11 @@ def vision_scores(
             typer.echo(f"Unknown provider: {provider}", err=True)
             raise typer.Exit(1)
 
-    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
+    source_map: Dict[str, SourceType] = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "lambda": "Lambda",
+    }
     source = source_map.get(provider)
 
     typer.echo(f"🔬 Vision Scores Demo - {provider.title()} ({model})")
@@ -99,7 +105,7 @@ def vision_scores(
 
     try:
         # Create agent (vision scores tool is added by default)
-        agent = BaseAgent(llm=model, source=source, temperature=0.7)  # type: ignore
+        agent = BaseAgent(llm=model, source=source, temperature=0.7)
 
         # Test the vision scores tool
         typer.echo(f"📊 Analyzing vision scores for cell: {cell_name}")
@@ -110,7 +116,7 @@ def vision_scores(
         typer.echo("\n🤖 Testing vision scores analysis with agent...")
         prompt = f"Use the analyze_vision_scores tool to analyze the vision scores for cell '{cell_name}' and drug '{drug_name}'. Show me the top features and provide insights about the results."
 
-        log, response = agent.run(prompt)
+        log, response, _, _ = agent.run(prompt)
 
         # Show the full log for debugging
         typer.echo("\n📝 Full execution log:")
@@ -120,6 +126,8 @@ def vision_scores(
             )
 
         typer.echo(f"\n🎯 Final Agent Response: {response}")
+        # typer.echo(f"🔍 Summary: {state['summary']}")
+        # typer.echo(f"🔍 Drug Rankings: {state['drug_rankings']}")
 
     except Exception as e:
         typer.echo(f"❌ Vision scores demo failed: {e}", err=True)
@@ -149,19 +157,23 @@ def basic_demo(
             typer.echo(f"Unknown provider: {provider}", err=True)
             raise typer.Exit(1)
 
-    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
+    source_map: Dict[str, SourceType] = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "lambda": "Lambda",
+    }
     source = source_map.get(provider)
 
     typer.echo(f"🔬 Basic Vision Scores Demo - {provider.title()} ({model})")
     typer.echo("=" * 50)
 
     try:
-        agent = BaseAgent(llm=model, source=source, temperature=temperature)  # type: ignore
+        agent = BaseAgent(llm=model, source=source, temperature=temperature)
 
         # Simple prompt to test the tool
         prompt = "Analyze vision scores for cell HS-578T and drug TestDrug using differential scores from /Users/gpalla/Datasets/tahoe"
 
-        log, response = agent.run(prompt)
+        log, response, _, _ = agent.run(prompt)
 
         typer.echo(f"💬 Question: {prompt}")
         typer.echo(f"🎯 Agent: {response}")
@@ -183,7 +195,7 @@ def drug_ranking(
     provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
     model: Annotated[
         Optional[str], typer.Option(help="Model name")
-    ] = "hermes-3-llama-3.1-405b-fp8",
+    ] = "llama-4-maverick-17b-128e-instruct-fp8",  # "hermes-3-llama-3.1-405b-fp8", #"deepseek-r1-671b",  #
     # NEW: Path configuration options
     custom_data_dir: Annotated[
         Optional[str], typer.Option(help="Custom data directory")
@@ -218,7 +230,11 @@ def drug_ranking(
             typer.echo(f"Unknown provider: {provider}", err=True)
             raise typer.Exit(1)
 
-    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
+    source_map: Dict[str, SourceType] = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "lambda": "Lambda",
+    }
     source = source_map.get(provider)
 
     typer.echo(f"💊 Drug Ranking Demo - {provider.title()} ({model})")
@@ -250,7 +266,7 @@ def drug_ranking(
         typer.echo(f"   Prompt: {prompt[:100]}...")
         typer.echo("\n🤖 Running agent workflow...")
 
-        log, response = agent.run(prompt)
+        log, response, structured_rankings, summary = agent.run(prompt)
 
         # Show execution log
         typer.echo("\n📝 Execution log:")
@@ -262,6 +278,22 @@ def drug_ranking(
         typer.echo(f"\n🎯 Final Drug Rankings (Hidden drug was: {drug_name}):")
         typer.echo("=" * 50)
         typer.echo(response)
+
+        # Save structured results to a file
+        # if structured_rankings or summary:
+        #     results_path = get_paths().results_dir / "drug_rankings.json"
+        #     typer.echo(f"\n💾 Saving structured results to {results_path}...")
+        #     results_data = {}
+        #     if summary:
+        #         results_data["summary"] = summary
+        #     if structured_rankings:
+        #         # Convert Pydantic models to dictionaries for JSON serialization
+        #         results_data["rankings"] = [
+        #             r.dict() for r in structured_rankings
+        #         ]
+        #     with open(results_path, "w") as f:
+        #         json.dump(results_data, f, indent=2)
+        #     typer.echo("   Done.")
 
     except Exception as e:
         typer.echo(f"❌ Drug ranking demo failed: {e}", err=True)
