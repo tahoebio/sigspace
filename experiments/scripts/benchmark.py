@@ -36,15 +36,13 @@ def main(cfg: DictConfig) -> None:
         tool_config={"drug_name": cfg.drug_name},  # Hidden from LLM
     )
 
-    base_prompt = "Use the analyze_vision_scores tool to analyze the vision scores"
+    base_prompt = f"Use the {cfg.tool} tool to analyze the gene signatures"
     if cfg.cell_name is not None:
         base_prompt += f" for cell line '{cfg.cell_name}'"
 
     prompt = f"""{base_prompt}.
 
     Show me the top features and provide insights about the results.
-
-    After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
     """
 
     logger.info("🤖 Running agent workflow...")

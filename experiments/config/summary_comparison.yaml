@@ -6,9 +6,11 @@ timeout_seconds: 300
 source: Lambda
 # base_url: https://api.openai.com/v1
 
+# deepseek-r1-671b
 
-drug_name: "Adagrasib"
+drug_name: Adagrasib
 cell_name: null # Optional, can be a string like "HS-578T"
+tool: analyze_vision_scores
 
 # Path configuration
 custom_data_dir: /Users/gpalla/Datasets/tahoe
