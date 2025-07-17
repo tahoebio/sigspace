@@ -2,14 +2,14 @@
 
 from typing import Optional, Dict, Any
 
+
 import anndata as ad  # type: ignore
 import numpy as np
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from tahoe_agent.paths import get_paths
-from tahoe_agent._constants import VisionScoreColumns
-
+from tahoe_agent._constants import VisionScoreColumns, CELL_NAME_TO_CELL_ID
 
 class VisionScoresArgs(BaseModel):
     """Schema for vision scores analysis arguments."""
@@ -45,9 +45,11 @@ def analyze_signatures(
     all_signatures: np.ndarray
     scores: np.ndarray
     total_analyzed: int
-
+    
     if cell_name == 'None':
         cell_name = None
+    else:
+        cell_name = CELL_NAME_TO_CELL_ID[cell_name]
 
     if cell_name is None:
         print("Analyzing across all cell lines")
@@ -78,10 +80,9 @@ def analyze_signatures(
         all_signatures = adata.var_names
         total_analyzed = data.shape[0]
     else:
-        # Case 2: Analyze specific drug-cell combination
         mask = (
             (adata.obs['drug'] == drug_name)
-            & (adata.obs['cell_line'] == cell_name)  # Note: cell_line not cell_name
+            & (adata.obs['cell_line'] == cell_name)
             & (adata.obs['concentration'] == concentration)
         )
 
@@ -98,17 +99,13 @@ def analyze_signatures(
                 f"Available concentrations: {list(available_concs)}"
             )
 
-        # Get the specific data point(s) and convert to dense array if needed
-        data = scores_matrix[mask, :]
+        # Convert mask to NumPy before indexing
+        data = scores_matrix[mask.to_numpy(), :]
+
         if hasattr(data, "toarray"):
             data = data.toarray()
 
-        # Create signature names array matching the flattened data shape
-        # If we have multiple replicates, repeat gene names for each replicate
         all_signatures = np.repeat(adata.var_names, data.shape[0])
-
-        # Since we filtered by cell line, drug and concentration,
-        # we can just flatten the array to get 1D scores
         scores = data.flatten()
         total_analyzed = mask.sum()
 
