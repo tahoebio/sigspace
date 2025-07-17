@@ -1,27 +1,17 @@
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
-import seaborn as sns
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.manifold import TSNE
 import pathlib
-from tahoe_agent.logging_config import get_logger
+import seaborn as sns
+from sklearn.manifold import TSNE
+from sklearn.metrics.pairwise import cosine_similarity
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-logger = get_logger()
 
-
-def generate_summary_embedding(summary):
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    return model.encode(summary)
-
-
-def analyze_embeddings(summary_directory, drugs_file):
-    logger.info("[analyze_embeddings] analyzing embeddings on generated summaries")
-
+def analyze_embeddings(summary_directory, drugs_file, cell_line=None):
     summary_directory = pathlib.Path(summary_directory)
     drugs_file = pathlib.Path(drugs_file)
 
@@ -29,26 +19,21 @@ def analyze_embeddings(summary_directory, drugs_file):
     drugs = drugs_data["drug"].tolist()
     moas = drugs_data["moa-fine"].tolist()
 
-    available_summaries = []
+    available_embeddings = []
     available_drugs = []
     available_moas = []
 
     for drug, moa in zip(drugs, moas):
-        summary_path = summary_directory / f"{drug}_summary.txt"
-        if summary_path.exists():
-            with open(summary_path, "r") as f:
-                available_summaries.append(f.read())
-                available_drugs.append(drug)
-                available_moas.append(moa)
+        embedding_path = summary_directory / f"embedding_{drug}_{cell_line}.npz"
 
-    logger.info(
-        f"[analyze_embeddings] found {len(available_drugs)} drugs with summaries"
-    )
-    logger.info("[analyze_embeddings] computing summary embeddings")
+        if embedding_path.exists():
+            embedding = np.load(embedding_path)["embedding"]
 
-    embeddings = np.stack(
-        [generate_summary_embedding(summary) for summary in available_summaries]
-    )
+            available_embeddings.append(embedding)
+            available_drugs.append(drug)
+            available_moas.append(moa)
+
+    embeddings = np.stack(available_embeddings)
 
     similarity_matrix = cosine_similarity(embeddings)
 
@@ -61,12 +46,7 @@ def analyze_embeddings(summary_directory, drugs_file):
                 same_moa if available_moas[i] == available_moas[j] else different_moa
             ).append(similarity_matrix[i, j])
 
-    logger.info(
-        f"[analyze_embeddings] found {len(same_moa)} same moa pairs and {len(different_moa)} different moa pairs"
-    )
-
     # --- PLOT 1: distribution of cosine similarity scores for same vs. different moa's ---
-    logger.info("[analyze_embeddings] creating cosine similarity distribution plot")
     fig, ax = plt.subplots(figsize=(8, 5))
     sns.histplot(
         same_moa,
@@ -78,6 +58,7 @@ def analyze_embeddings(summary_directory, drugs_file):
         alpha=0.6,
         ax=ax,
     )
+
     sns.histplot(
         different_moa,
         color="red",
@@ -96,12 +77,7 @@ def analyze_embeddings(summary_directory, drugs_file):
     similarity_plot_path = summary_directory / "similarity_distribution.png"
     fig.savefig(similarity_plot_path)
 
-    logger.info(
-        f"[analyze_embeddings] saved similarity distribution plot to: {similarity_plot_path}"
-    )
-
     # --- PLOT 2: visualization of embedding space for the sentence transformer ---
-    logger.info("[analyze_embeddings] creating t-SNE visualization")
     tsne = TSNE(
         n_components=2, random_state=42, perplexity=min(len(available_drugs) - 1, 30)
     )
@@ -137,4 +113,40 @@ def analyze_embeddings(summary_directory, drugs_file):
     tsne_plot_path = summary_directory / "tsne_embeddings.png"
     fig.savefig(tsne_plot_path)
 
-    logger.info(f"[analyze_embeddings] saved t-SNE plot to: {tsne_plot_path}")
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="analyze summary embeddings and visualize results"
+    )
+
+    parser.add_argument(
+        "-c",
+        "--cell_line",
+        type=str,
+        help="cell line to analyze, else omit if analyzing across all cell lines",
+    )
+    parser.add_argument(
+        "-d",
+        "--drugs_file",
+        type=str,
+        help="path to the file containing drug information",
+    )
+    parser.add_argument(
+        "-s",
+        "--summary_directory",
+        type=str,
+        help="directory to save summary outputs and plots",
+    )
+
+    arguments = parser.parse_args()
+    return arguments
+
+
+if __name__ == "__main__":
+    arguments = parse_arguments()
+
+    cell_line = arguments.cell_line
+    drugs_file = arguments.drugs_file
+    summary_directory = arguments.summary_directory
+
+    analyze_embeddings(summary_directory, drugs_file, cell_line)
