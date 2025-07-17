@@ -1,13 +1,20 @@
 # @package _global_
 
-model: openai/gpt-4o-mini
+model: llama-4-maverick-17b-128e-instruct-fp8
 temperature: 0.7
-use_retriever: false
 timeout_seconds: 300
-source: openai
-base_url: https://api.openai.com/v1
+source: Lambda
+# base_url: https://api.openai.com/v1
+
+
+drug_name: "Adagrasib"
+cell_name: null # Optional, can be a string like "HS-578T"
+
+# Path configuration
+custom_data_dir: /Users/gpalla/Datasets/tahoe
+custom_results_dir: /Users/gpalla/Datasets/tahoe/results
 
 hydra:
   sweeper:
     params:
-      model: openai/gpt-4o-mini, openai/gpt-4o
+      model: llama-4-maverick-17b-128e-instruct-fp8
