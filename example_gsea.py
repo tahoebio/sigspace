@@ -9,11 +9,11 @@ This example shows:
 4. Configurable path management (NEW)
 
 Usage:
-    python example.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
-    python example.py gsea-scores --provider anthropic --model claude-3-5-sonnet-20241022
-    python example.py gsea-scores --provider lambda --model hermes-3-llama-3.1-405b-fp8
-    python example.py models
-    python example.py paths  # NEW: Show path configuration
+    python example_gsea.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
+    python example_gsea.py gsea-scores --provider anthropic --model claude-3-5-sonnet-20241022
+    python example_gsea.py gsea-scores --provider lambda --model hermes-3-llama-3.1-405b-fp8
+    python example_gsea.py models
+    python example_gsea.py paths  # NEW: Show path configuration
 """
 
 from typing import Optional
