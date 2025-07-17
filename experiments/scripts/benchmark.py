@@ -89,10 +89,10 @@ def main(cfg: DictConfig) -> None:
     model = SentenceTransformer("all-MiniLM-L6-v2")
     summary_embedding = model.encode(summary)
     embedding_path = paths.get_results_file(
-        f"embedding_{cfg.drug_name}_{cfg.cell_name}.npy"
+        f"embedding_{cfg.drug_name}_{cfg.cell_name}.npz"
     )
     logger.info(f"💾 Saving summary embedding to {embedding_path}...")
-    np.save(embedding_path, summary_embedding)
+    np.savez_compressed(embedding_path, embedding=summary_embedding)
 
 
 if __name__ == "__main__":
