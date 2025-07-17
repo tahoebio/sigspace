@@ -9,11 +9,7 @@ This example shows:
 4. Configurable path management (NEW)
 
 Usage:
-    python example_gsea.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
-    python example_gsea.py gsea-scores --provider anthropic --model claude-3-5-sonnet-20241022
-    python example_gsea.py gsea-scores --provider lambda --model hermes-3-llama-3.1-405b-fp8
-    python example_gsea.py models
-    python example_gsea.py paths  # NEW: Show path configuration
+    python example_gsea.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --custom-results-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
 """
 
 from typing import Optional
@@ -99,7 +95,7 @@ def gsea_scores(
 
     try:
         # Create agent (GSEA scores tool is added by default)
-        agent = BaseAgent(llm=model, source=source, temperature=0.7)  # type: ignore
+        agent = BaseAgent(llm=model, source=source, temperature=0.7, tool_config={"drug_name": drug_name}) # Hidden from LLM  # type: ignore
 
         # Test the GSEA scores tool
         typer.echo(f"📊 Analyzing GSEA scores for cell: {cell_name}")
@@ -120,8 +116,8 @@ def gsea_scores(
             )
 
         typer.echo(f"\n🎯 Final Agent Response: {response}")
-        # typer.echo(f"🔍 Summary: {state['summary']}")
-        # typer.echo(f"🔍 Drug Rankings: {state['drug_rankings']}")
+        typer.echo(f"🔍 Summary: {state['summary']}")
+        typer.echo(f"🔍 Drug Rankings: {state['drug_rankings']}")
 
     except Exception as e:
         typer.echo(f"❌ GSEA scores demo failed: {e}", err=True)
