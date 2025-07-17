@@ -34,17 +34,17 @@ dependencies = [
   "langchain-ollama>=0.1",
   "langchain-openai>=0.1",
   "langgraph>=0.2",
+  # Added for benchmark/compare_embeddings.py
+  "matplotlib>=3.10",
   "omegaconf>=2.3",
   "openai>=1",
   "pandas>=2",
   "pydantic>=2",
+  "scikit-learn>=1.7",
+  "seaborn>=0.13",
+  "sentence-transformers>=5",
   "typer>=0.9",
   "typing-extensions>=4",
-  # Added for benchmark/compare_embeddings.py
-  "matplotlib>=3.10",
-  "seaborn>=0.13",
-  "sentence-transformers>=5.0",
-  "scikit-learn>=1.7",
 ]
 
 optional-dependencies.dev = [ "coverage", "mypy", "pre-commit", "pytest", "pytest-cov", "ruff" ]
