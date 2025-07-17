@@ -13,13 +13,13 @@ from langchain_core.messages import (
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from tahoe_agent.agent._prompts import SYSTEM_PROMPT
+from tahoe_agent.agent._prompts import SYSTEM_PROMPT, DRUG_RANKING_PROMPT
 from tahoe_agent.llm import get_llm, SourceType
 from tahoe_agent.model.retriever import Retriever
 
 # from tahoe_agent.tool.base_tool import python_executor, web_search
 from tahoe_agent.tool.vision_scores import analyze_vision_scores
-from tahoe_agent.tool.drug_ranking import rank_drugs_by_moa
+from tahoe_agent.tool.drug_ranking import get_drug_list
 from tahoe_agent.utils import pretty_print
 from functools import partial
 from pydantic import BaseModel, Field
@@ -125,7 +125,7 @@ class BaseAgent:
         # Add native LangChain tools
         self.native_tools = [
             analyze_vision_scores,
-            rank_drugs_by_moa,
+            get_drug_list,
         ]
 
     def configure(self) -> None:
@@ -164,6 +164,7 @@ class BaseAgent:
 
             from langchain_core.messages import ToolMessage
 
+            print("[LOG] Tool message: ", result)
             tool_message = ToolMessage(
                 content=result, name=analyze_vision_scores.name, tool_call_id=tool_id
             )
@@ -172,32 +173,69 @@ class BaseAgent:
 
         # Node 3: Summarize the results from the vision tool.
         def summarize_results(state: AgentState) -> AgentState:
-            messages = [SystemMessage(content=self.system_prompt)] + state["messages"]
+            print("\n[--- Summarizing Results ---]")
+            print(
+                f"[LOG] Last message content before summary: {state['messages'][-1].content}"
+            )
+
+            # Sanitize messages to ensure all content is a string before the LLM call.
+            # This prevents errors if a tool or model returns non-string content.
+            clean_messages = []
+            for msg in state["messages"]:
+                msg_copy = msg.copy()
+                if not isinstance(msg_copy.content, str):
+                    msg_copy.content = json.dumps(msg_copy.content, indent=2)
+                clean_messages.append(msg_copy)
+
+            messages = [SystemMessage(content=self.system_prompt)] + clean_messages
+
             synthesis_prompt = "Based on the tool execution results, provide a comprehensive summary of the biological signatures and their implications for the drug's mechanism of action."
             messages.append(HumanMessage(content=synthesis_prompt))
 
             response = self.llm.invoke(messages)
             state["messages"].append(response)
             if hasattr(response, "content") and response.content:
-                state["summary"] = str(response.content)
+                summary_text = str(response.content)
+                state["summary"] = summary_text
+                print(f"Summary generated: {summary_text[:200]}...")
+            else:
+                print("Warning: No summary was generated.")
             return state
 
         # Node 4: Rank drugs based on the summary and return structured output.
         def rank_drugs(state: AgentState) -> AgentState:
+            print("\n[--- Ranking Drugs ---]")
             summary = state.get("summary")
             if not summary:
+                print("Error: No summary available for drug ranking.")
                 return state
 
+            print(f"Using summary for ranking: {summary[:200]}...")
+
             # Invoke ranking tool to get candidate drugs
-            ranking_prompt = f"Use the rank_drugs_by_moa tool to find drugs with similar mechanisms of action to what is described in this summary:\n\nSummary: {summary}"
+            ranking_prompt = (
+                "Use the get_drug_list tool to retrieve the list of drugs for ranking."
+            )
             messages = [HumanMessage(content=ranking_prompt)]
             llm_with_ranking_tool = self.llm.bind_tools(
-                [rank_drugs_by_moa], tool_choice="required"
+                [get_drug_list], tool_choice="required"
             )
             response = llm_with_ranking_tool.invoke(messages)
 
+            if not hasattr(response, "tool_calls") or not response.tool_calls:
+                error_text = "Failed to get drug ranking tool call."
+                print(f"Error: {error_text}")
+                state["messages"].append(AIMessage(content=error_text))
+                state["drug_rankings"] = error_text
+                return state
+
             tool_call = response.tool_calls[0]
-            result = rank_drugs_by_moa.invoke(tool_call["args"])
+            # The get_drug_list tool takes no arguments, so we call it with an empty dict.
+            result = get_drug_list.invoke({})
+            print(
+                f"Result from get_drug_list tool (type: {type(result)}):\n{str(result)[:300]}..."
+            )
+
             from langchain_core.messages import ToolMessage
 
             ranking_tool_message = ToolMessage(
@@ -205,11 +243,21 @@ class BaseAgent:
             )
 
             # Generate final ranked list with structured output
-            final_prompt = "Based on the provided drug list and the initial summary, rank the top 50 drugs by relevance. Return a structured list where each entry has the drug name and a relevance score."
-            final_messages = [ranking_tool_message, HumanMessage(content=final_prompt)]
+            final_messages = [
+                ranking_tool_message,
+                HumanMessage(
+                    content=DRUG_RANKING_PROMPT.format(
+                        drug_list=result, summary=summary
+                    )
+                ),
+            ]
+
+            print(f"\nFinal messages for ranking LLM:\n{final_messages}\n")
 
             llm_with_structured_output = self.llm.with_structured_output(DrugRankings)
             structured_response = llm_with_structured_output.invoke(final_messages)
+
+            print(f"Structured response from ranking LLM:\n{structured_response}")
 
             if isinstance(structured_response, DrugRankings):
                 top_50_rankings = structured_response.rankings[:50]
@@ -360,36 +408,6 @@ class BaseAgent:
             List of (role, content) tuples
         """
         return self.log.copy()
-
-    def get_drug_rankings(self) -> Optional[str]:
-        """Get the latest drug rankings from the most recent run as formatted text.
-
-        Returns:
-            Formatted string with drug rankings or None if not available
-        """
-        # This would need to be stored from the latest run
-        # For now, return None - in practice, you'd want to store this in the instance
-        return None
-
-    def get_structured_rankings(self) -> Optional[List[Dict[str, Union[str, float]]]]:
-        """Get the latest drug rankings as a list of dictionaries.
-
-        Returns:
-            List of dictionaries with 'drug' and 'score' keys, or None if not available
-        """
-        # This would need to be stored from the latest run
-        # For now, return None - in practice, you'd want to store this in the instance
-        return None
-
-    def get_summary(self) -> Optional[str]:
-        """Get the latest summary from the most recent run.
-
-        Returns:
-            Summary string or None if not available
-        """
-        # This would need to be stored from the latest run
-        # For now, return None - in practice, you'd want to store this in the instance
-        return None
 
     def save_conversation(self, filename: str) -> None:
         """Save conversation to file.

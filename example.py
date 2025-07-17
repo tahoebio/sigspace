@@ -185,7 +185,7 @@ def drug_ranking(
     provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
     model: Annotated[
         Optional[str], typer.Option(help="Model name")
-    ] = "hermes-3-llama-3.1-405b-fp8",
+    ] = "deepseek-r1-671b",  # "hermes-3-llama-3.1-405b-fp8"
     # NEW: Path configuration options
     custom_data_dir: Annotated[
         Optional[str], typer.Option(help="Custom data directory")
