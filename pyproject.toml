@@ -40,6 +40,11 @@ dependencies = [
   "pydantic>=2",
   "typer>=0.9",
   "typing-extensions>=4",
+  # Added for benchmark/compare_embeddings.py
+  "matplotlib>=3.10",
+  "seaborn>=0.13",
+  "sentence-transformers>=5.0",
+  "scikit-learn>=1.7",
 ]
 
 optional-dependencies.dev = [ "coverage", "mypy", "pre-commit", "pytest", "pytest-cov", "ruff" ]
