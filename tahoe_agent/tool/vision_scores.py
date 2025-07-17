@@ -194,13 +194,13 @@ def analyze_vision_scores(
             output_parts.append(f"**Cell Line:** {cell_name}\n")
             output_parts.append(f"**Data File:** {file_path.name}\n")
 
-        output_parts.append("\n## Top 10 Signatures (Highest Absolute Scores):\n")
-        for i, item in enumerate(signatures["top_250"][:10], 1):
-            output_parts.append(f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n")
+        output_parts.append("\n## Top 250 Signatures (Highest Scores):\n")
+        for i, item in enumerate(signatures["top_250"], 1):
+            output_parts.append(f"{i}. {item['feature']}: {item['score']:.6f}\n")
 
-        output_parts.append("\n## Bottom 10 Signatures (Lowest Absolute Scores):\n")
-        for i, item in enumerate(signatures["bottom_250"][:10], 1):
-            output_parts.append(f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n")
+        output_parts.append("\n## Bottom 250 Signatures (Lowest Scores):\n")
+        for i, item in enumerate(signatures["bottom_250"], 1):
+            output_parts.append(f"{i}. {item['feature']}: {item['score']:.6f}\n")
 
         if cell_name is None:
             analysis_context = "mean scores across all cell lines for this drug"
@@ -209,8 +209,8 @@ def analyze_vision_scores(
         summary_text = f"""
 ## Analysis Summary:
 - **Total signatures analyzed:** {len(adata.var_names)}
-- **Top 250 signatures identified** (showing top 10 above)
-- **Bottom 250 signatures identified** (showing bottom 10 above)
+- **Top 250 signatures identified**
+- **Bottom 250 signatures identified**
 - **Analysis based on {analysis_context}**
 
 The vision scores represent the importance or activity level of different biological pathways and gene sets for this drug{' across all tested cell lines' if cell_name is None else ' in this specific cell line'}.

@@ -1,6 +1,7 @@
 """Base agent implementation for Tahoe Agent."""
 
 import json
+import copy
 from typing import Any, Dict, List, Optional, TypedDict, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -90,6 +91,9 @@ class BaseAgent:
         else:
             self.llm = llm
 
+        # Create a separate, clean LLM for summarization by copying the base LLM
+        self.summarizer_llm = copy.copy(self.llm)
+
         self.temperature = temperature
         self.use_retriever = use_retriever
         self.timeout_seconds = timeout_seconds
@@ -123,10 +127,7 @@ class BaseAgent:
     def _setup_default_tools(self) -> None:
         """Set up default tools for the agent."""
         # Add native LangChain tools
-        self.native_tools = [
-            analyze_vision_scores,
-            get_drug_list,
-        ]
+        self.native_tools = [analyze_vision_scores]
 
     def configure(self) -> None:
         """Configures the agent's workflow for vision analysis and drug ranking."""
@@ -174,30 +175,25 @@ class BaseAgent:
         # Node 3: Summarize the results from the vision tool.
         def summarize_results(state: AgentState) -> AgentState:
             print("\n[--- Summarizing Results ---]")
-            print(
-                f"[LOG] Last message content before summary: {state['messages'][-1].content}"
-            )
+            tool_output = state["messages"][-1].content
 
-            # Sanitize messages to ensure all content is a string before the LLM call.
-            # This prevents errors if a tool or model returns non-string content.
-            clean_messages = []
-            for msg in state["messages"]:
-                msg_copy = msg.copy()
-                if not isinstance(msg_copy.content, str):
-                    msg_copy.content = json.dumps(msg_copy.content, indent=2)
-                clean_messages.append(msg_copy)
+            messages = [HumanMessage(content=f"Tool Execution Results: {tool_output}")]
 
-            messages = [SystemMessage(content=self.system_prompt)] + clean_messages
+            # DO NOT REMOVE THIS COMMENTED CODE
+            # print("\n[--- Message Contents ---]")
+            # for i, msg in enumerate(messages):
+            #     print(f"\nMessage {i}:")
+            #     if hasattr(msg, "content"):
+            #         print(f"Content: {msg.content}")
+            #     else:
+            #         print("No content attribute")
 
-            synthesis_prompt = "Based on the tool execution results, provide a comprehensive summary of the biological signatures and their implications for the drug's mechanism of action."
-            messages.append(HumanMessage(content=synthesis_prompt))
-
-            response = self.llm.invoke(messages)
+            response = self.summarizer_llm.invoke(messages)
             state["messages"].append(response)
             if hasattr(response, "content") and response.content:
                 summary_text = str(response.content)
                 state["summary"] = summary_text
-                print(f"Summary generated: {summary_text[:200]}...")
+                print(f"Summary generated: {summary_text}...")
             else:
                 print("Warning: No summary was generated.")
             return state
@@ -210,49 +206,23 @@ class BaseAgent:
                 print("Error: No summary available for drug ranking.")
                 return state
 
-            print(f"Using summary for ranking: {summary[:200]}...")
-
-            # Invoke ranking tool to get candidate drugs
-            ranking_prompt = (
-                "Use the get_drug_list tool to retrieve the list of drugs for ranking."
-            )
-            messages = [HumanMessage(content=ranking_prompt)]
-            llm_with_ranking_tool = self.llm.bind_tools(
-                [get_drug_list], tool_choice="required"
-            )
-            response = llm_with_ranking_tool.invoke(messages)
-
-            if not hasattr(response, "tool_calls") or not response.tool_calls:
-                error_text = "Failed to get drug ranking tool call."
-                print(f"Error: {error_text}")
-                state["messages"].append(AIMessage(content=error_text))
-                state["drug_rankings"] = error_text
-                return state
-
-            tool_call = response.tool_calls[0]
-            # The get_drug_list tool takes no arguments, so we call it with an empty dict.
-            result = get_drug_list.invoke({})
-            print(
-                f"Result from get_drug_list tool (type: {type(result)}):\n{str(result)[:300]}..."
-            )
-
-            from langchain_core.messages import ToolMessage
-
-            ranking_tool_message = ToolMessage(
-                content=result, name=tool_call["name"], tool_call_id=tool_call["id"]
-            )
+            # Since get_drug_list takes no arguments, we can invoke it directly.
+            print("Invoking get_drug_list tool directly...")
+            drug_list_str = get_drug_list.invoke({})
+            print(f"Result from get_drug_list tool:\n{str(drug_list_str)[:300]}...")
 
             # Generate final ranked list with structured output
             final_messages = [
-                ranking_tool_message,
                 HumanMessage(
                     content=DRUG_RANKING_PROMPT.format(
-                        drug_list=result, summary=summary
+                        drug_list=drug_list_str, summary=summary
                     )
                 ),
             ]
 
-            print(f"\nFinal messages for ranking LLM:\n{final_messages}\n")
+            print("\nMessages content for final ranking LLM:")
+            for msg in final_messages:
+                print(f"[{msg.__class__.__name__}]: {msg.content}...")
 
             llm_with_structured_output = self.llm.with_structured_output(DrugRankings)
             structured_response = llm_with_structured_output.invoke(final_messages)
@@ -327,7 +297,14 @@ class BaseAgent:
         )
         return partial_func(**tool_args)
 
-    def run(self, prompt: str, **kwargs: Any) -> tuple[List[tuple[str, str]], str]:
+    def run(
+        self, prompt: str, **kwargs: Any
+    ) -> tuple[
+        List[tuple[str, str]],
+        str,
+        Optional[TypingList[DrugRanking]],
+        Optional[str],
+    ]:
         """Run the agent with a given prompt.
 
         Args:
@@ -335,7 +312,7 @@ class BaseAgent:
             **kwargs: Additional arguments
 
         Returns:
-            Tuple of (log, final_response)
+            Tuple of (log, final_response, structured_rankings, summary)
         """
         if not self.configured:
             self.configure()
@@ -346,6 +323,8 @@ class BaseAgent:
 
         self.log = []
         final_response = ""
+        structured_rankings = None
+        summary = None
 
         # Stream the workflow
         try:
@@ -375,12 +354,22 @@ class BaseAgent:
             ):
                 final_response = final_state["drug_rankings"]
 
+            if (
+                final_state
+                and "structured_rankings" in final_state
+                and final_state["structured_rankings"]
+            ):
+                structured_rankings = final_state["structured_rankings"]
+
+            if final_state and "summary" in final_state and final_state["summary"]:
+                summary = final_state["summary"]
+
         except Exception as e:
             error_msg = f"Error during execution: {str(e)}"
             self.log.append(("error", error_msg))
             final_response = error_msg
 
-        return self.log, final_response
+        return self.log, final_response, structured_rankings, summary
 
     def chat(self, prompt: str) -> str:
         """Simple chat interface.
@@ -391,7 +380,7 @@ class BaseAgent:
         Returns:
             Agent response
         """
-        _, response = self.run(prompt)
+        _, response, _, _ = self.run(prompt)
         return response
 
     def reset(self) -> None:

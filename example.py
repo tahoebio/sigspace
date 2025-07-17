@@ -12,6 +12,8 @@ from tahoe_agent import BaseAgent
 from tahoe_agent.llm import SourceType
 from tahoe_agent.logging_config import get_logger
 from tahoe_agent.paths import configure_paths, get_paths
+from typing import Optional, Dict
+
 import typer
 import typing
 from typing import Optional
@@ -65,6 +67,22 @@ def summarize_vision_scores_one_drug(
             f.write(response)
             
         logger.info(f"[summarize_vision_scores_one_drug] saved model summary to: {file}")
+
+        # Save structured results to a file
+        # if structured_rankings or summary:
+        #     results_path = get_paths().results_dir / "drug_rankings.json"
+        #     typer.echo(f"\n💾 Saving structured results to {results_path}...")
+        #     results_data = {}
+        #     if summary:
+        #         results_data["summary"] = summary
+        #     if structured_rankings:
+        #         # Convert Pydantic models to dictionaries for JSON serialization
+        #         results_data["rankings"] = [
+        #             r.dict() for r in structured_rankings
+        #         ]
+        #     with open(results_path, "w") as f:
+        #         json.dump(results_data, f, indent=2)
+        #     typer.echo("   Done.")
 
     except Exception as e:
         logger.error(f"demonstration failed: {e}")
