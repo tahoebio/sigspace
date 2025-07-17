@@ -14,7 +14,11 @@ from langchain_core.messages import (
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from tahoe_agent.agent._prompts import SYSTEM_PROMPT, DRUG_RANKING_PROMPT
+from tahoe_agent.agent._prompts import (
+    SYSTEM_PROMPT,
+    DRUG_RANKING_PROMPT,
+    SUMMARY_PROMPT,
+)
 from tahoe_agent.llm import get_llm, SourceType
 from tahoe_agent.model.retriever import Retriever
 
@@ -46,7 +50,7 @@ class AgentState(TypedDict):
     """State of the agent."""
 
     messages: List[BaseMessage]
-    summary: Optional[str]  # Store the summary from retrieval step
+    signature_summary: Optional[str]  # Store the summary from retrieval step
     drug_rankings: Optional[str]  # Store the final drug ranking results
     structured_rankings: Optional[
         TypingList[DrugRanking]
@@ -177,7 +181,9 @@ class BaseAgent:
             print("\n[--- Summarizing Results ---]")
             tool_output = state["messages"][-1].content
 
-            messages = [HumanMessage(content=f"Tool Execution Results: {tool_output}")]
+            messages = [
+                HumanMessage(content=SUMMARY_PROMPT.format(tool_output=tool_output))
+            ]
 
             # DO NOT REMOVE THIS COMMENTED CODE
             # print("\n[--- Message Contents ---]")
@@ -192,7 +198,7 @@ class BaseAgent:
             state["messages"].append(response)
             if hasattr(response, "content") and response.content:
                 summary_text = str(response.content)
-                state["summary"] = summary_text
+                state["signature_summary"] = summary_text
                 print(f"Summary generated: {summary_text}...")
             else:
                 print("Warning: No summary was generated.")
@@ -201,7 +207,7 @@ class BaseAgent:
         # Node 4: Rank drugs based on the summary and return structured output.
         def rank_drugs(state: AgentState) -> AgentState:
             print("\n[--- Ranking Drugs ---]")
-            summary = state.get("summary")
+            summary = state.get("signature_summary")
             if not summary:
                 print("Error: No summary available for drug ranking.")
                 return state
@@ -361,8 +367,12 @@ class BaseAgent:
             ):
                 structured_rankings = final_state["structured_rankings"]
 
-            if final_state and "summary" in final_state and final_state["summary"]:
-                summary = final_state["summary"]
+            if (
+                final_state
+                and "signature_summary" in final_state
+                and final_state["signature_summary"]
+            ):
+                summary = final_state["signature_summary"]
 
         except Exception as e:
             error_msg = f"Error during execution: {str(e)}"
