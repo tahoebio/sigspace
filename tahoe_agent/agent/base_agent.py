@@ -163,7 +163,7 @@ class BaseAgent:
             tool_args = tool_call["args"]
             tool_id = tool_call["id"]
 
-            result = self._inject_drug_name_in_vision_score(
+            result = self._inject_drug_name(
                 analyze_vision_scores, tool_args
             )
 
@@ -186,7 +186,7 @@ class BaseAgent:
             tool_args = tool_call["args"]
             tool_id = tool_call["id"]
 
-            result = self._inject_drug_name_in_gsea_score(
+            result = self._inject_drug_name(
                 analyze_gsea_scores, tool_args
             )
 
@@ -305,7 +305,7 @@ class BaseAgent:
         # mermaid_code = self.app.get_graph().draw_mermaid()
         # print(mermaid_code)
 
-    def _inject_drug_name_in_vision_score(
+    def _inject_drug_name(
         self, tool_func: Any, tool_args: Dict[str, Any]
     ) -> Any:  # noqa: ANN401
         # Create a partial version of the tool function with drug_name pre-bound
@@ -316,22 +316,7 @@ class BaseAgent:
         )
 
         print(
-            f"[DEBUG] _execute_vision_scores_with_injection: Using partial with drug_name: {self.tool_config['drug_name']}"
-        )
-        return partial_func(**tool_args)
-    
-    def _inject_drug_name_in_gsea_score(
-        self, tool_func: Any, tool_args: Dict[str, Any]
-    ) -> Any:  # noqa: ANN401
-        # Create a partial version of the tool function with drug_name pre-bound
-        underlying_func = tool_func.func  # noqa: E1101
-        partial_func = partial(
-            underlying_func,
-            drug_name=self.tool_config["drug_name"],
-        )
-
-        print(
-            f"[DEBUG] _execute_gsea_scores_with_injection: Using partial with drug_name: {self.tool_config['drug_name']}"
+            f"[DEBUG] _execute_scores_with_injection: Using partial with drug_name: {self.tool_config['drug_name']}"
         )
         return partial_func(**tool_args)
 
