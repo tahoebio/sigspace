@@ -9,8 +9,8 @@ This example shows:
 4. Configurable path management (NEW)
 
 Usage:
-    python example_gsea.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --custom-results-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
-    python example_gsea.py drug-ranking --data-path ~/sigspace2/sid/Datasets/tahoe --custom-results-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
+    python example_gsea.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --custom-data-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
+    python example_gsea.py drug-ranking --data-path ~/sigspace2/sid/Datasets/tahoe --custom-data-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
 """
 
 from typing import Optional

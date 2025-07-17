@@ -150,7 +150,7 @@ def analyze_gsea_scores(
         return "Error: Drug name must be configured in the agent system."
 
     paths = get_paths()
-    file_path = paths.results_dir / "gsea_all_sparse.h5ad"
+    file_path = paths.data_dir / "gsea_all_sparse.h5ad"
     if not file_path.exists():
         return f"Error: GSEA file not found: {file_path}"
 
