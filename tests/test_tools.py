@@ -9,6 +9,7 @@ from pprint import pprint
 from tahoe_agent.tool.vision_scores import analyze_vision_scores
 from tahoe_agent.tool.drug_ranking import rank_drugs_by_moa
 from tahoe_agent._constants import VisionScoreColumns
+from tahoe_agent.logging_config import get_logger
 
 
 def test_analyze_vision_scores() -> None:
@@ -64,16 +65,16 @@ def test_analyze_vision_scores() -> None:
             )
 
     # Print results
-    print("\n" + "=" * 80)
-    print("RESULT 1 - Drug only (cell_name=None):")
-    print("=" * 80)
-    print(result1)
-
-    print("\n" + "=" * 80)
-    print("RESULT 2 - Drug + cell (cell_name='HS-578T'):")
-    print("=" * 80)
-    print(result2)
-    print("=" * 80)
+    logger = get_logger()
+    logger.info("[test_analyze_vision_scores] " + "=" * 80)
+    logger.info("[test_analyze_vision_scores] RESULT 1 - Drug only (cell_name=None):")
+    logger.info("[test_analyze_vision_scores] " + "=" * 80)
+    logger.info(f"[test_analyze_vision_scores] {result1}")
+    logger.info("[test_analyze_vision_scores] " + "=" * 80)
+    logger.info("[test_analyze_vision_scores] RESULT 2 - Drug + cell (cell_name='HS-578T'):")
+    logger.info("[test_analyze_vision_scores] " + "=" * 80)
+    logger.info(f"[test_analyze_vision_scores] {result2}")
+    logger.info("[test_analyze_vision_scores] " + "=" * 80)
 
     # Basic assertions
     assert "Vision Scores Analysis Results (Across All Cell Lines)" in result1

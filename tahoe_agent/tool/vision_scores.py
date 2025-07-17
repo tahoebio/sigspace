@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from tahoe_agent.paths import get_paths
 from tahoe_agent._constants import VisionScoreColumns, CELL_NAME_TO_CELL_ID
+from tahoe_agent.logging_config import get_logger
 
 class VisionScoresArgs(BaseModel):
     """Schema for vision scores analysis arguments."""
@@ -25,8 +26,8 @@ def analyze_signatures(
     cell_name: Optional[str] = None,
     concentration: float = 5.0
 ) -> Dict[str, Any]:
-
-    print ("Here is the drug name: ", drug_name)
+    logger = get_logger()
+    logger.info(f"[analyze_signatures] Here is the drug name: {drug_name}")
     """Analyze drug signatures for a specific drug and concentration, with or without cell line.
 
     Args:
@@ -52,7 +53,7 @@ def analyze_signatures(
         cell_name = CELL_NAME_TO_CELL_ID[cell_name]
 
     if cell_name is None:
-        print("Analyzing across all cell lines")
+        logger.info("Analyzing across all cell lines")
         mask = (adata.obs['drug'] == drug_name) & (
             adata.obs['concentration'] == concentration
         )
