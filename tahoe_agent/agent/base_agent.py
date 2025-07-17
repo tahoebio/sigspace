@@ -20,10 +20,7 @@ from tahoe_agent.model.retriever import Retriever
 
 # from tahoe_agent.tool.base_tool import python_executor, web_search
 from tahoe_agent.tool.vision_scores import analyze_vision_scores
-<<<<<<< HEAD
-=======
 from tahoe_agent.tool.gsea_scores import analyze_gsea_scores
->>>>>>> Sid01123/structure-output
 from tahoe_agent.tool.drug_ranking import get_drug_list
 from tahoe_agent.utils import pretty_print
 from functools import partial
