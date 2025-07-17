@@ -20,6 +20,10 @@ from tahoe_agent.model.retriever import Retriever
 
 # from tahoe_agent.tool.base_tool import python_executor, web_search
 from tahoe_agent.tool.vision_scores import analyze_vision_scores
+<<<<<<< HEAD
+=======
+from tahoe_agent.tool.gsea_scores import analyze_gsea_scores
+>>>>>>> Sid01123/structure-output
 from tahoe_agent.tool.drug_ranking import get_drug_list
 from tahoe_agent.utils import pretty_print
 from functools import partial
@@ -127,7 +131,10 @@ class BaseAgent:
     def _setup_default_tools(self) -> None:
         """Set up default tools for the agent."""
         # Add native LangChain tools
-        self.native_tools = [analyze_vision_scores]
+        self.native_tools = [
+            analyze_vision_scores,
+            analyze_gsea_scores,
+        ]
 
     def configure(self) -> None:
         """Configures the agent's workflow for vision analysis and drug ranking."""
@@ -143,13 +150,13 @@ class BaseAgent:
         def plan_step(state: AgentState) -> AgentState:
             messages = [SystemMessage(content=self.system_prompt)] + state["messages"]
             llm_with_tools = self.llm.bind_tools(
-                [analyze_vision_scores], tool_choice="any"
+                [analyze_vision_scores, analyze_gsea_scores], tool_choice="any"
             )
             response = llm_with_tools.invoke(messages)
             state["messages"].append(response)
             return state
 
-        # Node 2: Execute the vision scores tool if requested by the planner.
+        # Node 2A: Execute the vision scores tool if requested by the planner.
         def execute_vision_tool(state: AgentState) -> AgentState:
             last_message = state["messages"][-1]
             if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
@@ -171,6 +178,29 @@ class BaseAgent:
             )
             state["messages"].append(tool_message)
             return state
+        
+        # Node 2B: Execute the GSEA tool if requested by the planner.
+        def execute_gsea_tool(state: AgentState) -> AgentState:
+            last_message = state["messages"][-1]
+            if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+                return state
+
+            tool_call = last_message.tool_calls[0]
+            tool_args = tool_call["args"]
+            tool_id = tool_call["id"]
+
+            result = self._inject_drug_name_in_gsea_score(
+                analyze_gsea_scores, tool_args
+            )
+
+            from langchain_core.messages import ToolMessage
+
+            print("[LOG] Tool message: ", result)
+            tool_message = ToolMessage(
+                content=result, name=analyze_gsea_scores.name, tool_call_id=tool_id
+            )
+            state["messages"].append(tool_message)
+            return state
 
         # Node 3: Summarize the results from the vision tool.
         def summarize_results(state: AgentState) -> AgentState:
@@ -189,14 +219,7 @@ class BaseAgent:
             #         print("No content attribute")
 
             response = self.summarizer_llm.invoke(messages)
-            state["messages"].append(response)
-            if hasattr(response, "content") and response.content:
-                summary_text = str(response.content)
-                state["summary"] = summary_text
-                print(f"Summary generated: {summary_text}...")
-            else:
-                print("Warning: No summary was generated.")
-            return state
+        
 
         # Node 4: Rank drugs based on the summary and return structured output.
         def rank_drugs(state: AgentState) -> AgentState:
@@ -263,12 +286,15 @@ class BaseAgent:
         # Define the workflow graph
         workflow.add_node("plan_step", plan_step)
         workflow.add_node("execute_vision_tool", execute_vision_tool)
+        workflow.add_node("execute_gsea_tool", execute_gsea_tool)
         workflow.add_node("summarize_results", summarize_results)
         workflow.add_node("rank_drugs", rank_drugs)
 
         workflow.set_entry_point("plan_step")
         workflow.add_edge("plan_step", "execute_vision_tool")
         workflow.add_edge("execute_vision_tool", "summarize_results")
+        workflow.add_edge("plan_step", "execute_gsea_tool")
+        workflow.add_edge("execute_gsea_tool", "summarize_results")
 
         workflow.add_conditional_edges(
             "summarize_results",
@@ -294,6 +320,21 @@ class BaseAgent:
 
         print(
             f"[DEBUG] _execute_vision_scores_with_injection: Using partial with drug_name: {self.tool_config['drug_name']}"
+        )
+        return partial_func(**tool_args)
+    
+    def _inject_drug_name_in_gsea_score(
+        self, tool_func: Any, tool_args: Dict[str, Any]
+    ) -> Any:  # noqa: ANN401
+        # Create a partial version of the tool function with drug_name pre-bound
+        underlying_func = tool_func.func  # noqa: E1101
+        partial_func = partial(
+            underlying_func,
+            drug_name=self.tool_config["drug_name"],
+        )
+
+        print(
+            f"[DEBUG] _execute_gsea_scores_with_injection: Using partial with drug_name: {self.tool_config['drug_name']}"
         )
         return partial_func(**tool_args)
 

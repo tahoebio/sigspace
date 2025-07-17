@@ -1,41 +1,36 @@
 #!/usr/bin/env python3
 """
-Vision Scores Analysis example demonstrating the Tahoe Agent with LangChain native tools.
+GSEA Scores Analysis example demonstrating the Tahoe Agent with LangChain native tools.
 
 This example shows:
-1. Vision scores analysis with different LLM providers
+1. GSEA scores analysis with different LLM providers
 2. Native LangChain tool integration
 3. Static DAG workflow (prompt -> tool_calling -> retrieval)
 4. Configurable path management (NEW)
 
 Usage:
-    python example.py vision-scores --data-path /Users/gpalla/Datasets/tahoe --cell-name HS-578T
-    python example.py vision-scores --provider anthropic --model claude-3-5-sonnet-20241022
-    python example.py vision-scores --provider lambda --model hermes-3-llama-3.1-405b-fp8
-    python example.py models
-    python example.py paths  # NEW: Show path configuration
+    python example_gsea.py gsea-scores --data-path ~/sigspace2/sid/Datasets/tahoe --custom-results-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
+    python example_gsea.py drug-ranking --data-path ~/sigspace2/sid/Datasets/tahoe --custom-results-dir ~/sigspace2/sid/Datasets/tahoe --cell-name c_15
 """
 
-from typing import Optional, Dict
+from typing import Optional
 
 import typer
 from typing_extensions import Annotated
 
 from tahoe_agent import BaseAgent
 from tahoe_agent.paths import configure_paths, get_paths  # NEW
-from tahoe_agent.llm import SourceType
-
 
 app = typer.Typer(
-    help="Tahoe Agent Vision Scores Demo - Analyze vision scores with different AI providers"
+    help="Tahoe Agent GSEA Scores Demo - Analyze GSEA scores with different AI providers"
 )
 
 
 @app.command()
-def vision_scores(
+def gsea_scores(
     data_path: Annotated[
         str, typer.Option(help="Path to directory containing h5ad files")
-    ] = "/Users/gpalla/Datasets/tahoe",
+    ] = "~/sigspace2/sid/Datasets/tahoe",
     cell_name: Annotated[
         Optional[str], typer.Option(help="Cell name to analyze")
     ] = None,
@@ -52,7 +47,7 @@ def vision_scores(
         Optional[str], typer.Option(help="Custom results directory")
     ] = None,
 ) -> None:
-    """Vision scores analysis demonstration."""
+    """GSEA scores analysis demonstration."""
     # NEW: Configure custom paths if provided
     if custom_data_dir or custom_results_dir:
         typer.echo("🔧 Configuring custom paths...")
@@ -80,21 +75,17 @@ def vision_scores(
             typer.echo(f"Unknown provider: {provider}", err=True)
             raise typer.Exit(1)
 
-    source_map: Dict[str, SourceType] = {
-        "openai": "OpenAI",
-        "anthropic": "Anthropic",
-        "lambda": "Lambda",
-    }
+    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
     source = source_map.get(provider)
 
-    typer.echo(f"🔬 Vision Scores Demo - {provider.title()} ({model})")
+    typer.echo(f"🔬 GSEA Scores Demo - {provider.title()} ({model})")
     typer.echo("=" * 50)
 
-    from tahoe_agent.tool.vision_scores import analyze_vision_scores
+    from tahoe_agent.tool.gsea_scores import analyze_gsea_scores
 
-    # Test direct vision scores function call first
-    typer.echo("\n🔧 Testing direct vision scores function call...")
-    result = analyze_vision_scores.invoke(
+    # Test direct GSEA scores function call first
+    typer.echo("\n🔧 Testing direct GSEA scores function call...")
+    result = analyze_gsea_scores.invoke(
         input={
             "cell_name": cell_name,
             "drug_name": drug_name,  # NEW
@@ -104,19 +95,19 @@ def vision_scores(
     typer.echo("-" * 50 + "\n")
 
     try:
-        # Create agent (vision scores tool is added by default)
-        agent = BaseAgent(llm=model, source=source, temperature=0.7)
+        # Create agent (GSEA scores tool is added by default)
+        agent = BaseAgent(llm=model, source=source, temperature=0.7, tool_config={"drug_name": drug_name}) # Hidden from LLM  # type: ignore
 
-        # Test the vision scores tool
-        typer.echo(f"📊 Analyzing vision scores for cell: {cell_name}")
+        # Test the GSEA scores tool
+        typer.echo(f"📊 Analyzing GSEA scores for cell: {cell_name}")
         typer.echo(f"💊 Drug: {drug_name}")  # NEW
         typer.echo(f"📂 Data path: {data_path}")
 
         # Create a prompt for the agent to use the tool
-        typer.echo("\n🤖 Testing vision scores analysis with agent...")
-        prompt = f"Use the analyze_vision_scores tool to analyze the vision scores for cell '{cell_name}' and drug '{drug_name}'. Show me the top features and provide insights about the results."
+        typer.echo("\n🤖 Testing GSEA scores analysis with agent...")
+        prompt = f"Use the analyze_gsea_scores tool to analyze the GSEA scores for cell '{cell_name}' and drug '{drug_name}'. Show me the top features and provide insights about the results."
 
-        log, response, _, _ = agent.run(prompt)
+        log, response = agent.run(prompt)
 
         # Show the full log for debugging
         typer.echo("\n📝 Full execution log:")
@@ -126,14 +117,13 @@ def vision_scores(
             )
 
         typer.echo(f"\n🎯 Final Agent Response: {response}")
-        # typer.echo(f"🔍 Summary: {state['summary']}")
-        # typer.echo(f"🔍 Drug Rankings: {state['drug_rankings']}")
+        typer.echo(f"🔍 Summary: {state['summary']}")
+        typer.echo(f"🔍 Drug Rankings: {state['drug_rankings']}")
 
     except Exception as e:
-        typer.echo(f"❌ Vision scores demo failed: {e}", err=True)
+        typer.echo(f"❌ GSEA scores demo failed: {e}", err=True)
         typer.echo("\n💡 Note: Make sure the h5ad files exist in the specified path:")
-        typer.echo("  • 20250417.diff_vision_scores_pseudobulk.public.h5ad")
-        typer.echo("  • 20250417.vision_scores_pseudobulk.public.h5ad")
+        typer.echo("  • gsea_all_sparse.h5ad")
         raise typer.Exit(1)
 
 
@@ -143,7 +133,7 @@ def basic_demo(
     model: Annotated[Optional[str], typer.Option(help="Model name")] = None,
     temperature: Annotated[float, typer.Option(help="Temperature")] = 0.7,
 ) -> None:
-    """Basic vision scores demo with simplified prompt."""
+    """Basic GSEA scores demo with simplified prompt."""
 
     # Set defaults based on provider
     if model is None:
@@ -157,23 +147,19 @@ def basic_demo(
             typer.echo(f"Unknown provider: {provider}", err=True)
             raise typer.Exit(1)
 
-    source_map: Dict[str, SourceType] = {
-        "openai": "OpenAI",
-        "anthropic": "Anthropic",
-        "lambda": "Lambda",
-    }
+    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
     source = source_map.get(provider)
 
-    typer.echo(f"🔬 Basic Vision Scores Demo - {provider.title()} ({model})")
+    typer.echo(f"🔬 Basic GSEA Scores Demo - {provider.title()} ({model})")
     typer.echo("=" * 50)
 
     try:
-        agent = BaseAgent(llm=model, source=source, temperature=temperature)
+        agent = BaseAgent(llm=model, source=source, temperature=temperature)  # type: ignore
 
         # Simple prompt to test the tool
-        prompt = "Analyze vision scores for cell HS-578T and drug TestDrug using differential scores from /Users/gpalla/Datasets/tahoe"
+        prompt = "Analyze GSEA scores for cell c_15 and drug TestDrug using differential scores from ~/sigspace2/sid/Datasets/tahoe"
 
-        log, response, _, _ = agent.run(prompt)
+        log, response = agent.run(prompt)
 
         typer.echo(f"💬 Question: {prompt}")
         typer.echo(f"🎯 Agent: {response}")
@@ -187,7 +173,7 @@ def basic_demo(
 def drug_ranking(
     data_path: Annotated[
         str, typer.Option(help="Path to directory containing h5ad files")
-    ] = "/Users/gpalla/Datasets/tahoe",
+    ] = "~/sigspace2/sid/Datasets/tahoe",
     cell_name: Annotated[
         Optional[str], typer.Option(help="Cell name to analyze")
     ] = None,
@@ -195,11 +181,7 @@ def drug_ranking(
     provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
     model: Annotated[
         Optional[str], typer.Option(help="Model name")
-<<<<<<< HEAD
-    ] = "llama-4-maverick-17b-128e-instruct-fp8",  # "hermes-3-llama-3.1-405b-fp8", #"deepseek-r1-671b",  #
-=======
     ] = "deepseek-r1-671b",  # "hermes-3-llama-3.1-405b-fp8"
->>>>>>> Sid01123/structure-output
     # NEW: Path configuration options
     custom_data_dir: Annotated[
         Optional[str], typer.Option(help="Custom data directory")
@@ -234,11 +216,7 @@ def drug_ranking(
             typer.echo(f"Unknown provider: {provider}", err=True)
             raise typer.Exit(1)
 
-    source_map: Dict[str, SourceType] = {
-        "openai": "OpenAI",
-        "anthropic": "Anthropic",
-        "lambda": "Lambda",
-    }
+    source_map = {"openai": "OpenAI", "anthropic": "Anthropic", "lambda": "Lambda"}
     source = source_map.get(provider)
 
     typer.echo(f"💊 Drug Ranking Demo - {provider.title()} ({model})")
@@ -254,7 +232,7 @@ def drug_ranking(
         )
 
         # Build prompt based on whether cell_name is provided
-        base_prompt = "Use the analyze_vision_scores tool to analyze the vision scores"
+        base_prompt = "Use the analyze_gsea_scores tool to analyze the GSEA scores"
         if cell_name is not None:
             base_prompt += f" for cell line '{cell_name}'"
 
@@ -270,7 +248,7 @@ def drug_ranking(
         typer.echo(f"   Prompt: {prompt[:100]}...")
         typer.echo("\n🤖 Running agent workflow...")
 
-        log, response, structured_rankings, summary = agent.run(prompt)
+        log, response = agent.run(prompt)
 
         # Show execution log
         typer.echo("\n📝 Execution log:")
@@ -282,22 +260,6 @@ def drug_ranking(
         typer.echo(f"\n🎯 Final Drug Rankings (Hidden drug was: {drug_name}):")
         typer.echo("=" * 50)
         typer.echo(response)
-
-        # Save structured results to a file
-        # if structured_rankings or summary:
-        #     results_path = get_paths().results_dir / "drug_rankings.json"
-        #     typer.echo(f"\n💾 Saving structured results to {results_path}...")
-        #     results_data = {}
-        #     if summary:
-        #         results_data["summary"] = summary
-        #     if structured_rankings:
-        #         # Convert Pydantic models to dictionaries for JSON serialization
-        #         results_data["rankings"] = [
-        #             r.dict() for r in structured_rankings
-        #         ]
-        #     with open(results_path, "w") as f:
-        #         json.dump(results_data, f, indent=2)
-        #     typer.echo("   Done.")
 
     except Exception as e:
         typer.echo(f"❌ Drug ranking demo failed: {e}", err=True)

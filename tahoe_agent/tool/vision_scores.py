@@ -193,6 +193,7 @@ def analyze_vision_scores(
             )
             output_parts.append(f"**Cell Line:** {cell_name}\n")
             output_parts.append(f"**Data File:** {file_path.name}\n")
+<<<<<<< HEAD
 
         output_parts.append("\n## Top 250 Signatures (Highest Scores):\n")
         for i, item in enumerate(signatures["top_250"], 1):
@@ -202,6 +203,17 @@ def analyze_vision_scores(
         for i, item in enumerate(signatures["bottom_250"], 1):
             output_parts.append(f"{i}. {item['feature']}: {item['score']:.6f}\n")
 
+=======
+
+        output_parts.append("\n## Top 10 Signatures (Highest Absolute Scores):\n")
+        for i, item in enumerate(signatures["top_250"][:10], 1):
+            output_parts.append(f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n")
+
+        output_parts.append("\n## Bottom 10 Signatures (Lowest Absolute Scores):\n")
+        for i, item in enumerate(signatures["bottom_250"][:10], 1):
+            output_parts.append(f"{i:2d}. **{item['feature']}**: {item['score']:.6f}\n")
+
+>>>>>>> Sid01123/structure-output
         if cell_name is None:
             analysis_context = "mean scores across all cell lines for this drug"
         else:

@@ -13,6 +13,7 @@ Always be helpful, accurate, and clear in your responses."""
 DRUG_RANKING_PROMPT = """
 Based on the provided drug list and the initial summary, rank the top 50 drugs by relevance. There are two important rules that you need to follow:
 
+<<<<<<< HEAD
 Here is the summary:
 {summary}
 
@@ -23,4 +24,14 @@ Here is the list of available drugs to rank:
 2. You can not use any other drugs in the top 50 ranking, you can only use the drugs in the drug list.
 3. You need to rank the drugs based on what you know about their mechanism of action and how that matches the summary that you are given.
 4. Do not hallucinate, you can only use the drugs in the drug list to rank the drugs.
+=======
+1. You can only use the drugs present in the drug list to rank the drugs.
+2. You need to rank the drugs based on what you know about their mechanism of action and how that matches the summary that you are given.
+
+Here is the drug list:
+{drug_list}
+
+Here is the summary:
+{summary}
+>>>>>>> Sid01123/structure-output
 """
