@@ -143,58 +143,10 @@ def signature_analysis(
 
 
 @app.command()
-def basic_demo(
-    provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
-    model: Annotated[Optional[str], typer.Option(help="Model name")] = None,
-    temperature: Annotated[float, typer.Option(help="Temperature")] = 0.7,
-) -> None:
-    """Basic vision scores demo with simplified prompt."""
-
-    # Set defaults based on provider
-    if model is None:
-        if provider == "openai":
-            model = "gpt-4o-mini"
-        elif provider == "anthropic":
-            model = "claude-3-5-sonnet-20241022"
-        elif provider == "lambda":
-            model = "hermes-3-llama-3.1-405b-fp8"
-        else:
-            logger.error(f"[basic_demo] Unknown provider: {provider}")
-            raise typer.Exit(1)
-
-    source_map: Dict[str, SourceType] = {
-        "openai": "OpenAI",
-        "anthropic": "Anthropic",
-        "lambda": "Lambda",
-    }
-    source = source_map.get(provider)
-
-    logger.info(
-        f"[basic_demo] 🔬 Basic Vision Scores Demo - {provider.title()} ({model})"
-    )
-    logger.info("[basic_demo] " + "=" * 50)
-
-    try:
-        agent = BaseAgent(llm=model, source=source, temperature=temperature)
-
-        # Simple prompt to test the tool
-        prompt = "Analyze vision scores for cell HS-578T and drug TestDrug using differential scores from /Users/gpalla/Datasets/tahoe"
-
-        log, response, _, _ = agent.run(prompt)
-
-        logger.info(f"[basic_demo] 💬 Question: {prompt}")
-        logger.info(f"[basic_demo] 🎯 Agent: {response}")
-
-    except Exception as e:
-        logger.error(f"[basic_demo] ❌ Error: {e}")
-        raise typer.Exit(1)
-
-
-@app.command()
 def drug_ranking(
-    data_path: Annotated[
-        str, typer.Option(help="Path to directory containing h5ad files")
-    ] = "/Users/gpalla/Datasets/tahoe",
+    analysis_type: Annotated[
+        str, typer.Option(help="Type of analysis to run: 'vision' or 'gsea'")
+    ] = "vision",
     cell_name: Annotated[
         Optional[str], typer.Option(help="Cell name to analyze")
     ] = None,
@@ -257,16 +209,31 @@ def drug_ranking(
         )
 
         # Build prompt based on whether cell_name is provided
-        base_prompt = "Use the analyze_vision_scores tool to analyze the vision scores"
-        if cell_name is not None:
-            base_prompt += f" for cell line '{cell_name}'"
+        if analysis_type == "vision":
+            base_prompt = (
+                "Use the analyze_vision_scores tool to analyze the vision scores"
+            )
+            if cell_name:
+                base_prompt += f" for cell line '{cell_name}'"
+            prompt = f"""{base_prompt}.
 
-        prompt = f"""{base_prompt}.
+            Show me the top features and provide insights about the results.
 
-        Show me the top features and provide insights about the results.
+            After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
+            """
+        elif analysis_type == "gsea":
+            base_prompt = "Use the analyze_gsea_scores tool to analyze the GSEA scores"
+            if cell_name:
+                base_prompt += f" for cell line '{cell_name}'"
+            prompt = f"""{base_prompt}.
 
-        After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
-        """
+            Show me the top enrichments and provide insights about the results.
+
+            After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
+            """
+        else:
+            logger.error(f"[drug_ranking] ❌ Invalid analysis type: {analysis_type}")
+            raise typer.Exit(1)
 
         logger.info(
             "[drug_ranking] 💬 Testing drug ranking with BLIND prompt (drug name hidden):"
@@ -289,38 +256,6 @@ def drug_ranking(
         )
         logger.info("[drug_ranking] " + "=" * 50)
         logger.info(f"[drug_ranking] {response}")
-
-        # Save structured results to a file
-        # if structured_rankings or summary:
-        #     results_path = get_paths().results_dir / "drug_rankings.json"
-        #     typer.echo(f"\n💾 Saving structured results to {results_path}...")
-        #     results_data = {}
-        #     if summary:
-        #         results_data["summary"] = summary
-        #     if structured_rankings:
-        #         # Convert Pydantic models to dictionaries for JSON serialization
-        #         results_data["rankings"] = [
-        #             r.dict() for r in structured_rankings
-        #         ]
-        #     with open(results_path, "w") as f:
-        #         json.dump(results_data, f, indent=2)
-        #     typer.echo("   Done.")
-
-        # Save structured results to a file
-        # if structured_rankings or summary:
-        #     results_path = get_paths().results_dir / "drug_rankings.json"
-        #     typer.echo(f"\n💾 Saving structured results to {results_path}...")
-        #     results_data = {}
-        #     if summary:
-        #         results_data["summary"] = summary
-        #     if structured_rankings:
-        #         # Convert Pydantic models to dictionaries for JSON serialization
-        #         results_data["rankings"] = [
-        #             r.dict() for r in structured_rankings
-        #         ]
-        #     with open(results_path, "w") as f:
-        #         json.dump(results_data, f, indent=2)
-        #     typer.echo("   Done.")
 
     except Exception as e:
         logger.error(f"[drug_ranking] ❌ Drug ranking demo failed: {e}")
