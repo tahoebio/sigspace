@@ -186,7 +186,6 @@ hydra:
         "Epirubicin (hydrochloride)",
         "Phenytoin (sodium)",
         "Orlistat",
-        "Sacubitril/Valsartan",
         "Monocrotaline",
         "Finasteride",
         "Hydroxyurea",
@@ -406,4 +405,7 @@ hydra:
         "Panobinostat",
         "Uridine",
         "Erdafitinib",
-        "Encorafenib")
+        "Encorafenib",
+        "γ-Oryzanol",
+        "18β-Glycyrrhetinic acid",
+        "Sacubitril/Valsartan")
