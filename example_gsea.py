@@ -115,7 +115,7 @@ def gsea_scores(
         typer.echo("\n🤖 Testing GSEA scores analysis with agent...")
         prompt = f"Use the analyze_gsea_scores tool to analyze the GSEA scores for cell '{cell_name}' and drug '{drug_name}'. Show me the top features and provide insights about the results."
 
-        log, response = agent.run(prompt)
+        log, response, _, _ = agent.run(prompt)
 
         # Show the full log for debugging
         typer.echo("\n📝 Full execution log:")

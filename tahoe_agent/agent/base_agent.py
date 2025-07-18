@@ -194,7 +194,7 @@ class BaseAgent:
 
             from langchain_core.messages import ToolMessage
 
-            print("[LOG] Tool message: ", result)
+            print("[LOG] Tool message: ", result[:100], "...")
             tool_message = ToolMessage(
                 content=result, name=analyze_gsea_scores.name, tool_call_id=tool_id
             )
@@ -294,6 +294,18 @@ class BaseAgent:
             state["messages"].append(AIMessage(content=rankings_text))
             return state
 
+        # Conditional router to decide which tool to execute.
+        def should_execute_tool(state: AgentState) -> str:
+            """Router to decide which tool to execute."""
+            last_message = state["messages"][-1]
+            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                tool_name = last_message.tool_calls[0]["name"]
+                if tool_name == analyze_vision_scores.name:
+                    return "execute_vision_tool"
+                if tool_name == analyze_gsea_scores.name:
+                    return "execute_gsea_tool"
+            return "end"  # Default to end if no tool call
+
         # Conditional router to decide whether to perform drug ranking.
         def should_rank_drugs(state: AgentState) -> str:
             original_message = state["messages"][0]
@@ -311,9 +323,18 @@ class BaseAgent:
         workflow.add_node("rank_drugs", rank_drugs)
 
         workflow.set_entry_point("plan_step")
-        workflow.add_edge("plan_step", "execute_vision_tool")
+
+        workflow.add_conditional_edges(
+            "plan_step",
+            should_execute_tool,
+            {
+                "execute_vision_tool": "execute_vision_tool",
+                "execute_gsea_tool": "execute_gsea_tool",
+                "end": END,
+            },
+        )
+
         workflow.add_edge("execute_vision_tool", "summarize_results")
-        workflow.add_edge("plan_step", "execute_gsea_tool")
         workflow.add_edge("execute_gsea_tool", "summarize_results")
 
         workflow.add_conditional_edges(

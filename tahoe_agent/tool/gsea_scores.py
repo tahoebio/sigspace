@@ -9,7 +9,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from tahoe_agent.paths import get_paths
-from tahoe_agent._constants import GSEAScoreColumns
+from tahoe_agent._constants import GSEAScoreColumns, CELL_NAME_TO_CELL_ID
 
 
 # ───────────────────── Pydantic schema for tool args ────────────────────────
@@ -59,6 +59,11 @@ def analyze_gsea_signatures(
 ) -> Dict[str, Any]:
     """Analyse NES & padj for a given drug/dose, returning positive and negative tables."""
     obs = adata.obs
+
+    if cell_name == "None" or cell_name is None:
+        cell_name = None
+    else:
+        cell_name = CELL_NAME_TO_CELL_ID[cell_name]
 
     # Choose dose (highest if unspecified)
     if concentration is None:
