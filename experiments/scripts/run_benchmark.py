@@ -17,11 +17,19 @@ logger = get_logger()
 )
 def main(cfg: DictConfig) -> None:
     logger.info("🔧 configuring custom paths...")
+
+    tool_mapping = {
+        "analyze_vision_scores": "vision_scores",
+        "analyze_gsea_scores": "gsea_scores",
+    }
+
     config_kwargs = {}
     if cfg.custom_data_dir:
         config_kwargs["data_dir"] = cfg.custom_data_dir
     if cfg.custom_results_dir:
-        config_kwargs["results_dir"] = Path(cfg.custom_results_dir) / cfg.model
+        config_kwargs["results_dir"] = (
+            Path(cfg.custom_results_dir) / cfg.model / tool_mapping[cfg.tool]
+        )
     configure_paths(**config_kwargs)
     logger.info("[main] starting benchmark run...")
 

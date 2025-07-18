@@ -10,6 +10,11 @@ class VisionScoreColumns:
     CONCENTRATION = "concentration"
 
 
+class GSEAScoreColumns:
+    DRUG_CONC = "drug_conc"  # e.g. "Bortezomib_5.0uM"
+    CELL_LINE = "cell_line"
+
+
 # Put a dictionary of cell_name to cell_id and format it
 CELL_NAME_TO_CELL_ID = {
     "A549": "c_1",
