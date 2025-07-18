@@ -17,9 +17,12 @@ from typing import Optional
 
 import typer
 from typing_extensions import Annotated
+from tahoe_agent.logging_config import get_logger
 
 from tahoe_agent import BaseAgent
 from tahoe_agent.paths import configure_paths, get_paths  # NEW
+
+logger = get_logger()
 
 app = typer.Typer(
     help="Tahoe Agent GSEA Scores Demo - Analyze GSEA scores with different AI providers"
@@ -96,7 +99,12 @@ def gsea_scores(
 
     try:
         # Create agent (GSEA scores tool is added by default)
-        agent = BaseAgent(llm=model, source=source, temperature=0.7, tool_config={"drug_name": drug_name}) # Hidden from LLM  # type: ignore
+        agent = BaseAgent(
+            llm=model,
+            source=source,
+            temperature=0.7,
+            tool_config={"drug_name": drug_name},
+        )  # Hidden from LLM  # type: ignore
 
         # Test the GSEA scores tool
         typer.echo(f"📊 Analyzing GSEA scores for cell: {cell_name}")
@@ -116,9 +124,14 @@ def gsea_scores(
                 f"  {i+1}. [{role}]: {content[:200]}{'...' if len(content) > 200 else ''}"
             )
 
-        typer.echo(f"\n🎯 Final Agent Response: {response}")
-        typer.echo(f"🔍 Summary: {state['summary']}")
-        typer.echo(f"🔍 Drug Rankings: {state['drug_rankings']}")
+        # Show the full log for debugging
+        logger.info("[vision_scores] \n📝 Full execution log:")
+        for i, (role, content) in enumerate(log):
+            logger.info(
+                f"[vision_scores]   {i+1}. [{role}]: {content[:200]}{'...' if len(content) > 200 else ''}"
+            )
+
+        logger.info(f"[vision_scores] \n🎯 Final Agent Response: {response}")
 
     except Exception as e:
         typer.echo(f"❌ GSEA scores demo failed: {e}", err=True)

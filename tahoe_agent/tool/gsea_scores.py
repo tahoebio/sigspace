@@ -1,4 +1,4 @@
-""""GSEA scores analysis tool for Tahoe Agent."""
+""" "GSEA scores analysis tool for Tahoe Agent."""
 
 from typing import Optional, Dict, Any
 
@@ -71,10 +71,12 @@ def analyze_gsea_signatures(
     conc_str = _format_conc(concentration)
 
     # Slice matrices
-    nes  = adata.layers[score_layer]
+    nes = adata.layers[score_layer]
     padj = adata.layers[padj_layer]
-    if hasattr(nes,  "toarray"): nes  = nes.toarray()
-    if hasattr(padj, "toarray"): padj = padj.toarray()
+    if hasattr(nes, "toarray"):
+        nes = nes.toarray()
+    if hasattr(padj, "toarray"):
+        padj = padj.toarray()
 
     var_names = np.asarray(adata.var_names)
     rows = obs[GSEAScoreColumns.DRUG_CONC].str.match(
@@ -89,10 +91,8 @@ def analyze_gsea_signatures(
     if cell_name:
         m = obs[GSEAScoreColumns.CELL_LINE] == cell_name
         if not m.any():
-            raise ValueError(
-                f"Cell line '{cell_name}' absent for this drug/dose."
-            )
-        nes_vec  = nes[m].mean(axis=0)
+            raise ValueError(f"Cell line '{cell_name}' absent for this drug/dose.")
+        nes_vec = nes[m].mean(axis=0)
         padj_vec = padj[m].mean(axis=0)
         sig_table = [
             {"gene_set": gs, "nes": float(n), "padj": float(p)}
@@ -104,10 +104,8 @@ def analyze_gsea_signatures(
         neg = ((padj < pval_threshold) & (nes < 0)).sum(axis=0) / nes.shape[0]
         keep = (pos >= min_fraction) | (neg >= min_fraction)
         if not keep.any():
-            raise ValueError(
-                "No gene sets meet padj & direction-consistency criteria."
-            )
-        nes_mean    = nes[:, keep].mean(axis=0)
+            raise ValueError("No gene sets meet padj & direction-consistency criteria.")
+        nes_mean = nes[:, keep].mean(axis=0)
         padj_median = np.median(padj[:, keep], axis=0)
         sig_table = [
             {

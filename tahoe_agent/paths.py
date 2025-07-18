@@ -142,9 +142,11 @@ def get_vision_diff_file() -> pathlib.Path:
     """Get the vision diff scores file path."""
     return get_paths().vision_diff_file
 
+
 def get_gsea_scores_file() -> pathlib.Path:
     """Get the GSEA scores file path."""
     return get_paths().gsea_scores_file
+
 
 def get_data_file(filename: str) -> pathlib.Path:
     """Get a file path in the data directory."""

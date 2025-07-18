@@ -13,6 +13,7 @@ from tahoe_agent._constants import VisionScoreColumns
 from tahoe_agent._constants import GSEAScoreColumns
 from tahoe_agent.logging_config import get_logger
 
+
 def test_analyze_vision_scores() -> None:
     """Test analyze_vision_scores tool with and without cell_name."""
     # Create mock AnnData object
@@ -161,6 +162,7 @@ def test_analyze_gsea_scores() -> None:
     assert "c_15" in result2
     assert "Top 10 Signatures" in result1
     assert "Top 10 Signatures" in result2
+
 
 def test_rank_drugs_by_moa() -> None:
     """Test rank_drugs_by_moa tool functionality."""

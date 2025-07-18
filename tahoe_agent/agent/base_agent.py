@@ -169,9 +169,7 @@ class BaseAgent:
             tool_args = tool_call["args"]
             tool_id = tool_call["id"]
 
-            result = self._inject_drug_name(
-                analyze_vision_scores, tool_args
-            )
+            result = self._inject_drug_name(analyze_vision_scores, tool_args)
 
             from langchain_core.messages import ToolMessage
 
@@ -181,7 +179,7 @@ class BaseAgent:
             )
             state["messages"].append(tool_message)
             return state
-        
+
         # Node 2B: Execute the GSEA tool if requested by the planner.
         def execute_gsea_tool(state: AgentState) -> AgentState:
             last_message = state["messages"][-1]
@@ -192,9 +190,7 @@ class BaseAgent:
             tool_args = tool_call["args"]
             tool_id = tool_call["id"]
 
-            result = self._inject_drug_name(
-                analyze_gsea_scores, tool_args
-            )
+            result = self._inject_drug_name(analyze_gsea_scores, tool_args)
 
             from langchain_core.messages import ToolMessage
 
@@ -332,9 +328,7 @@ class BaseAgent:
         # mermaid_code = self.app.get_graph().draw_mermaid()
         # print(mermaid_code)
 
-    def _inject_drug_name(
-        self, tool_func: Any, tool_args: Dict[str, Any]
-    ) -> Any:  # noqa: ANN401
+    def _inject_drug_name(self, tool_func: Any, tool_args: Dict[str, Any]) -> Any:  # noqa: ANN401
         # Create a partial version of the tool function with drug_name pre-bound
         underlying_func = tool_func.func  # noqa: E1101
         partial_func = partial(
