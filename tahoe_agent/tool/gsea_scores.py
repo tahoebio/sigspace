@@ -148,7 +148,7 @@ def analyze_gsea_scores(
         return "Error: Drug name must be configured in the agent system."
 
     paths = get_paths()
-    file_path = paths.data_dir / "gsea_all_sparse.h5ad"
+    file_path = paths.gsea_scores_file
     if not file_path.exists():
         return f"Error: GSEA file not found: {file_path}"
 
@@ -178,14 +178,14 @@ def analyze_gsea_scores(
         out.append(f"**Data File:** {file_path.name}\n")
 
         out.append("\n## Top Enrichments - UP-regulated (highest positive NES):\n")
-        for i, row in enumerate(res["pos_signatures"], 1):
+        for i, row in enumerate(res["pos_signatures"][:250], 1):
             out.append(
                 f"{i:2d}. **{row['gene_set']}** — NES {row['nes']:.3f}; "
                 f"padj {row['padj']:.2e}\n"
             )
 
         out.append("\n## Top Enrichments - DOWN-regulated (most negative NES):\n")
-        for i, row in enumerate(res["neg_signatures"], 1):
+        for i, row in enumerate(res["neg_signatures"][:250], 1):
             out.append(
                 f"{i:2d}. **{row['gene_set']}** — NES {row['nes']:.3f}; "
                 f"padj {row['padj']:.2e}\n"

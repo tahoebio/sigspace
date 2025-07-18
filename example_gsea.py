@@ -135,8 +135,6 @@ def gsea_scores(
 
     except Exception as e:
         typer.echo(f"❌ GSEA scores demo failed: {e}", err=True)
-        typer.echo("\n💡 Note: Make sure the h5ad files exist in the specified path:")
-        typer.echo("  • gsea_all_sparse.h5ad")
         raise typer.Exit(1)
 
 
