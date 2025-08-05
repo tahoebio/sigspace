@@ -38,3 +38,25 @@ Here is the summary:
 Here is the list of available drugs to rank:
 {drug_list}
 """
+
+MOA_RANKING_PROMPT = """
+Based on the provided mechanism of action (MOA) list and the initial summary, rank the MOAs by relevance. Score each MOA based on how well it matches the biological signatures described in the summary.
+
+There are three important rules that you need to follow:
+
+1. **Biological Signature Matching**: For each MOA, evaluate how well it explains the biological signatures observed in the summary. Assign a higher score to MOAs that clearly account for the observed biological patterns.
+
+2. **MOA Mechanism Alignment**: Assess how well each MOA's mechanism of action aligns with the specific biological processes and pathways mentioned in the summary. Prioritize MOAs that directly involve or modulate these biological processes.
+
+3. **MOA List Limitation**: Only rank MOAs that are explicitly listed in the provided MOA list. Do not include any MOAs that are not in the list.
+
+For each MOA in your ranking, provide:
+- MOA name
+- Relevance score (0-100)
+
+Here is the summary:
+{summary}
+
+Here is the list of available MOAs to rank:
+{moa_list}
+"""

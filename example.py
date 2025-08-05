@@ -97,6 +97,7 @@ def signature_analysis(
             source=source,
             temperature=0.7,
             tool_config={"drug_name": drug_name},
+            task_type="drug_ranking",
         )
 
         logger.info(
@@ -127,7 +128,7 @@ def signature_analysis(
 
         logger.info(f"[signature_analysis] \n🤖 Sending prompt: {prompt}")
 
-        log, response, _, _ = agent.run(prompt)
+        log, response, _, _, _ = agent.run(prompt)
 
         logger.info("[signature_analysis] \n📝 Full execution log:")
         for i, (role, content) in enumerate(log):
@@ -206,6 +207,7 @@ def drug_ranking(
             source=source,
             temperature=0.7,
             tool_config={"drug_name": drug_name},  # Hidden from LLM
+            task_type="drug_ranking",
         )
 
         # Build prompt based on whether cell_name is provided
@@ -242,7 +244,7 @@ def drug_ranking(
         logger.info(f"[drug_ranking]    Prompt: {prompt[:100]}...")
         logger.info("[drug_ranking] \n🤖 Running agent workflow...")
 
-        log, response, structured_rankings, summary = agent.run(prompt)
+        log, response, _, _, _ = agent.run(prompt)
 
         # Show execution log
         logger.info("[drug_ranking] \n📝 Execution log:")
@@ -259,6 +261,126 @@ def drug_ranking(
 
     except Exception as e:
         logger.error(f"[drug_ranking] ❌ Drug ranking demo failed: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def moa_ranking(
+    analysis_type: Annotated[
+        str, typer.Option(help="Type of analysis to run: 'vision' or 'gsea'")
+    ] = "vision",
+    cell_name: Annotated[
+        Optional[str], typer.Option(help="Cell name to analyze")
+    ] = None,
+    drug_name: Annotated[str, typer.Option(help="Drug name to analyze")] = "Adagrasib",
+    provider: Annotated[str, typer.Option(help="AI provider")] = "lambda",
+    model: Annotated[
+        Optional[str], typer.Option(help="Model name")
+    ] = "llama-4-maverick-17b-128e-instruct-fp8",
+    custom_data_dir: Annotated[
+        Optional[str], typer.Option(help="Custom data directory")
+    ] = None,
+    custom_results_dir: Annotated[
+        Optional[str], typer.Option(help="Custom results directory")
+    ] = None,
+) -> None:
+    """Test MOA ranking functionality."""
+
+    # Configure custom paths if provided
+    if custom_data_dir or custom_results_dir:
+        logger.info("[moa_ranking] 🔧 Configuring custom paths...")
+        config_kwargs = {}
+        if custom_data_dir:
+            config_kwargs["data_dir"] = custom_data_dir
+        if custom_results_dir:
+            config_kwargs["results_dir"] = custom_results_dir
+        configure_paths(**config_kwargs)
+        logger.info(f"[moa_ranking]   Data directory: {get_paths().data_dir}")
+        logger.info(f"[moa_ranking]   Results directory: {get_paths().results_dir}")
+
+    # Set defaults based on provider
+    if model is None:
+        if provider == "openai":
+            model = "gpt-4o-mini"
+        elif provider == "anthropic":
+            model = "claude-3-5-sonnet-20241022"
+        elif provider == "lambda":
+            model = "hermes-3-llama-3.1-405b-fp8"
+        else:
+            logger.error(f"[moa_ranking] Unknown provider: {provider}")
+            raise typer.Exit(1)
+
+    source_map: Dict[str, SourceType] = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "lambda": "Lambda",
+    }
+    source = source_map.get(provider)
+
+    logger.info(f"[moa_ranking] 🧬 MOA Ranking Demo - {provider.title()} ({model})")
+    logger.info("[moa_ranking] " + "=" * 50)
+
+    try:
+        # Initialize agent with hidden drug configuration
+        agent = BaseAgent(
+            llm=model,
+            source=source,
+            temperature=0.7,
+            tool_config={"drug_name": drug_name},  # Hidden from LLM
+            task_type="moa_ranking",
+        )
+
+        # Build prompt based on whether cell_name is provided
+        if analysis_type == "vision":
+            base_prompt = (
+                "Use the analyze_vision_scores tool to analyze the vision scores"
+            )
+            if cell_name:
+                base_prompt += f" for cell line '{cell_name}'"
+            prompt = f"""{base_prompt}.
+
+            Show me the top features and provide insights about the results.
+
+            After the analysis, when the summary is available, rank mechanisms of action (MOAs) based on how well they match the observed biological signatures.
+            """
+        elif analysis_type == "gsea":
+            base_prompt = "Use the analyze_gsea_scores tool to analyze the GSEA scores"
+            if cell_name:
+                base_prompt += f" for cell line '{cell_name}'"
+            prompt = f"""{base_prompt}.
+
+            Show me the top enrichments and provide insights about the results.
+
+            After the analysis, when the summary is available, rank mechanisms of action (MOAs) based on how well they match the observed biological signatures.
+            """
+        else:
+            logger.error(f"[moa_ranking] ❌ Invalid analysis type: {analysis_type}")
+            raise typer.Exit(1)
+
+        logger.info(
+            "[moa_ranking] 💬 Testing MOA ranking with BLIND prompt (drug name hidden):"
+        )
+        logger.info(f"[moa_ranking]   Hidden drug: {drug_name}")
+        logger.info(f"[moa_ranking]   Prompt: {prompt[:100]}...")
+        logger.info("[moa_ranking] \n🤖 Running agent workflow...")
+
+        log, response, _, _, _ = agent.run(prompt)
+
+        # Show execution log
+        logger.info("[moa_ranking] \n📝 Execution log:")
+        for i, (role, content) in enumerate(log):
+            logger.info(
+                f"[moa_ranking]   {i+1}. [{role}]: {content[:150]}{'...' if len(content) > 150 else ''}"
+            )
+
+        logger.info(
+            f"[moa_ranking] \n🎯 Final MOA Rankings (Hidden drug was: {drug_name}):"
+        )
+        logger.info("[moa_ranking] " + "=" * 50)
+        logger.info(f"[moa_ranking] {response}")
+
+    except Exception as e:
+        logger.error(f"[moa_ranking] ❌ MOA ranking demo failed: {e}")
         raise typer.Exit(1)
 
 

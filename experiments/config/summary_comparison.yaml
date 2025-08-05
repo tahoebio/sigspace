@@ -24,6 +24,7 @@ source: ${model_source_map.${model_source_pair}.source}
 drug_name: Adagrasib
 cell_name: null
 tool: analyze_vision_scores
+task_type: drug_ranking
 
 custom_data_dir: /Users/rohit/Desktop/tahoe_data
 custom_results_dir: /Users/rohit/Desktop/tahoe_results
@@ -33,6 +34,7 @@ hydra:
     params:
       model_source_pair: choice(llama_4_maverick) # lambda_deepseek, openai_4o,
       tool: choice(analyze_vision_scores, analyze_gsea_scores)
+      task_type: choice(drug_ranking, moa_ranking)
       drug_name: choice(
         "8-Hydroxyquinoline",
         "Chlorhexidine (diacetate)")
