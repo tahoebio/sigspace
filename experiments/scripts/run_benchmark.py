@@ -64,8 +64,8 @@ def main(cfg: DictConfig) -> None:
         """
 
     logger.info("🤖 running agent workflow...")
-    log, response, structured_rankings, summary, structured_moa_rankings = agent.run(
-        prompt
+    log, response, summary, structured_drug_rankings, structured_moa_rankings = (
+        agent.run(prompt)
     )
 
     # Log results based on task type
@@ -84,12 +84,12 @@ def main(cfg: DictConfig) -> None:
         logger.info("\nsummary\n")
         logger.info(summary)
         logger.info("\nstructured drug rankings\n")
-        logger.info(structured_rankings)
+        logger.info(structured_drug_rankings)
 
     # Save summary
     os.makedirs(Path(paths.results_dir), exist_ok=True)
     summary_path = paths.get_results_file(
-        f"summary_{cfg.drug_name}_{cfg.cell_name}.txt"
+        f"summary_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.txt"
     )
     logger.info(f"\n💾 saving summary to {summary_path}...")
     with open(summary_path, "w") as f:
@@ -100,7 +100,7 @@ def main(cfg: DictConfig) -> None:
         # Convert structured MOA rankings to DataFrame and save as CSV
         if structured_moa_rankings:
             moa_rankings_path = paths.get_results_file(
-                f"moarank_{cfg.drug_name}_{cfg.cell_name}.csv"
+                f"moarank_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.csv"
             )
             logger.info(f"💾 saving MOA rankings to {moa_rankings_path}...")
 
@@ -116,16 +116,16 @@ def main(cfg: DictConfig) -> None:
             logger.info("✅ MOA rankings saved successfully")
     else:  # drug_ranking (default)
         # Convert structured drug rankings to DataFrame and save as CSV
-        if structured_rankings:
+        if structured_drug_rankings:
             rankings_path = paths.get_results_file(
-                f"drugrank_{cfg.drug_name}_{cfg.cell_name}.csv"
+                f"drugrank_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.csv"
             )
             logger.info(f"💾 saving drug rankings to {rankings_path}...")
 
             # Convert list of DrugRanking objects to DataFrame
             rankings_data = {
-                "drug": [r.drug for r in structured_rankings],
-                "score": [r.score for r in structured_rankings],
+                "drug": [r.drug for r in structured_drug_rankings],
+                "score": [r.score for r in structured_drug_rankings],
             }
             rankings_df = pd.DataFrame(rankings_data)
 
@@ -137,7 +137,7 @@ def main(cfg: DictConfig) -> None:
     model = SentenceTransformer("all-MiniLM-L6-v2")
     summary_embedding = model.encode(summary)
     embedding_path = paths.get_results_file(
-        f"embedding_{cfg.drug_name}_{cfg.cell_name}.npz"
+        f"embedding_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.npz"
     )
     logger.info(f"💾 saving summary embedding to {embedding_path}...")
     np.savez_compressed(embedding_path, embedding=summary_embedding)
