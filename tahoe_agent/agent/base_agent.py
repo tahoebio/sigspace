@@ -77,6 +77,9 @@ class AgentState(TypedDict):
     structured_moa_rankings: Optional[
         TypingList[MOARanking]
     ]  # Store structured MOA rankings
+    analysis_tool_executed: Optional[
+        bool
+    ]  # Track if analysis tool (vision/gsea) has been executed
 
 
 class BaseAgent:
@@ -173,6 +176,10 @@ class BaseAgent:
 
         # Node 1: Plan the next step, which may involve calling a tool.
         def plan_step(state: AgentState) -> AgentState:
+            # If an analysis tool has already been executed, skip planning
+            if state.get("analysis_tool_executed"):
+                return state
+
             messages = [SystemMessage(content=self.system_prompt)] + state["messages"]
             llm_with_tools = self.llm.bind_tools(
                 [analyze_vision_scores, analyze_gsea_scores], tool_choice="any"
@@ -200,6 +207,7 @@ class BaseAgent:
                 content=result, name=analyze_vision_scores.name, tool_call_id=tool_id
             )
             state["messages"].append(tool_message)
+            state["analysis_tool_executed"] = True  # Mark analysis tool as executed
             return state
 
         # Node 2B: Execute the GSEA tool if requested by the planner.
@@ -221,6 +229,7 @@ class BaseAgent:
                 content=result, name=analyze_gsea_scores.name, tool_call_id=tool_id
             )
             state["messages"].append(tool_message)
+            state["analysis_tool_executed"] = True  # Mark analysis tool as executed
             return state
 
         # Node 3: Summarize the results from the vision tool.
@@ -377,6 +386,10 @@ class BaseAgent:
         # Conditional router to decide which tool to execute.
         def should_execute_tool(state: AgentState) -> str:
             """Router to decide which tool to execute."""
+            # If analysis tool already executed, skip to summarization
+            if state.get("analysis_tool_executed"):
+                return "summarize_results"
+
             last_message = state["messages"][-1]
             if hasattr(last_message, "tool_calls") and last_message.tool_calls:
                 tool_name = last_message.tool_calls[0]["name"]
@@ -412,6 +425,7 @@ class BaseAgent:
             {
                 "execute_vision_tool": "execute_vision_tool",
                 "execute_gsea_tool": "execute_gsea_tool",
+                "summarize_results": "summarize_results",
                 "end": END,
             },
         )
