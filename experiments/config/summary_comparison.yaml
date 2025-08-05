@@ -9,18 +9,22 @@ model_source_map:
   lambda_deepseek:
     model: deepseek-r1-671b
     source: Lambda
+    temperature: 0.7
   openai_4o:
     model: gpt-4o
     source: OpenAI
+    temperature: 0.7
   openai_o4_mini:
     model: o4-mini
     source: OpenAI
+    temperature: 1.0
   llama_4_maverick:
     model: llama-4-maverick-17b-128e-instruct-fp8
     source: Lambda
+    temperature: 0.7
 
 model: ${model_source_map.${model_source_pair}.model}
-temperature: 1.0
+temperature: ${model_source_map.${model_source_pair}.temperature}
 timeout_seconds: 300
 source: ${model_source_map.${model_source_pair}.source}
 
@@ -35,7 +39,7 @@ custom_results_dir: /Users/rohit/Desktop/tahoe/tahoe_results
 hydra:
   sweeper:
     params:
-      model_source_pair: choice(openai_o4_mini) # lambda_deepseek, openai_4o,
+      model_source_pair: choice(lambda_deepseek, llama_4_maverick, openai_o4_mini)
       tool: choice(analyze_vision_scores, analyze_gsea_scores)
       task_type: choice(drug_ranking, moa_ranking)
       drug_name: choice(
