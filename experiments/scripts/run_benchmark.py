@@ -42,61 +42,102 @@ def main(cfg: DictConfig) -> None:
         source=cfg.source,
         temperature=cfg.temperature,
         tool_config={"drug_name": cfg.drug_name},  # Hidden from LLM
+        task_type=cfg.task_type,  # Configure task type
     )
 
     base_prompt = f"Use the {cfg.tool} tool to analyze the gene signatures"
     if cfg.cell_name is not None:
         base_prompt += f" for cell line '{cfg.cell_name}'"
 
-    prompt = f"""{base_prompt}.
+    # Configure prompt based on task type
+    if cfg.task_type == "moa_ranking":
+        prompt = f"""{base_prompt}.
 
-    Show me the top features and provide insights about the results.
-    After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
-    """
+        Show me the top features and provide insights about the results.
+        After the analysis, when the summary is available, rank mechanisms of action based on how well they match the observed biological signatures.
+        """
+    else:  # drug_ranking (default)
+        prompt = f"""{base_prompt}.
+
+        Show me the top features and provide insights about the results.
+        After the analysis, when the summary is available, rank drugs based on how well their mechanisms of action match the observed biological signatures.
+        """
 
     logger.info("🤖 running agent workflow...")
-    log, response, structured_rankings, summary = agent.run(prompt)
+    log, response, summary, structured_drug_rankings, structured_moa_rankings = (
+        agent.run(prompt)
+    )
 
-    logger.info(f"\n🎯 final drug rankings (hidden drug was: {cfg.drug_name}):")
-    logger.info("=" * 50)
-    logger.info(response)
-    logger.info("\nsummary\n")
-    logger.info(summary)
-    logger.info("\nstructured rankings\n")
-    logger.info(structured_rankings)
+    # Log results based on task type
+    if cfg.task_type == "moa_ranking":
+        logger.info(f"\n🎯 final MOA rankings (hidden drug was: {cfg.drug_name}):")
+        logger.info("=" * 50)
+        logger.info(response)
+        logger.info("\nsummary\n")
+        logger.info(summary)
+        logger.info("\nstructured MOA rankings\n")
+        logger.info(structured_moa_rankings)
+    else:  # drug_ranking (default)
+        logger.info(f"\n🎯 final drug rankings (hidden drug was: {cfg.drug_name}):")
+        logger.info("=" * 50)
+        logger.info(response)
+        logger.info("\nsummary\n")
+        logger.info(summary)
+        logger.info("\nstructured drug rankings\n")
+        logger.info(structured_drug_rankings)
 
     # Save summary
     os.makedirs(Path(paths.results_dir), exist_ok=True)
     summary_path = paths.get_results_file(
-        f"summary_{cfg.drug_name}_{cfg.cell_name}.txt"
+        f"summary_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.txt"
     )
     logger.info(f"\n💾 saving summary to {summary_path}...")
     with open(summary_path, "w") as f:
         f.write(summary)
 
-    # Convert structured rankings to DataFrame and save as CSV
-    if structured_rankings:
-        rankings_path = paths.get_results_file(
-            f"drugrank_{cfg.drug_name}_{cfg.cell_name}.csv"
-        )
-        logger.info(f"💾 saving drug rankings to {rankings_path}...")
+    # Save rankings based on task type
+    if cfg.task_type == "moa_ranking":
+        # Convert structured MOA rankings to DataFrame and save as CSV
+        if structured_moa_rankings:
+            moa_rankings_path = paths.get_results_file(
+                f"moarank_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.csv"
+            )
+            logger.info(f"💾 saving MOA rankings to {moa_rankings_path}...")
 
-        # Convert list of DrugRanking objects to DataFrame
-        rankings_data = {
-            "drug": [r.drug for r in structured_rankings],
-            "score": [r.score for r in structured_rankings],
-        }
-        rankings_df = pd.DataFrame(rankings_data)
+            # Convert list of MOARanking objects to DataFrame
+            moa_rankings_data = {
+                "moa": [r.moa for r in structured_moa_rankings],
+                "score": [r.score for r in structured_moa_rankings],
+            }
+            moa_rankings_df = pd.DataFrame(moa_rankings_data)
 
-        # Save to CSV
-        rankings_df.to_csv(rankings_path, index=False)
-        logger.info("✅ results saved successfully")
+            # Save to CSV
+            moa_rankings_df.to_csv(moa_rankings_path, index=False)
+            logger.info("✅ MOA rankings saved successfully")
+    else:  # drug_ranking (default)
+        # Convert structured drug rankings to DataFrame and save as CSV
+        if structured_drug_rankings:
+            rankings_path = paths.get_results_file(
+                f"drugrank_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.csv"
+            )
+            logger.info(f"💾 saving drug rankings to {rankings_path}...")
+
+            # Convert list of DrugRanking objects to DataFrame
+            rankings_data = {
+                "drug": [r.drug for r in structured_drug_rankings],
+                "score": [r.score for r in structured_drug_rankings],
+            }
+            rankings_df = pd.DataFrame(rankings_data)
+
+            # Save to CSV
+            rankings_df.to_csv(rankings_path, index=False)
+            logger.info("✅ drug rankings saved successfully")
 
     # create embeddings for the summary
     model = SentenceTransformer("all-MiniLM-L6-v2")
     summary_embedding = model.encode(summary)
     embedding_path = paths.get_results_file(
-        f"embedding_{cfg.drug_name}_{cfg.cell_name}.npz"
+        f"embedding_{cfg.model_source_pair}_{cfg.tool}_{cfg.task_type}_{cfg.drug_name}_{cfg.cell_name}_{cfg.temperature}.npz"
     )
     logger.info(f"💾 saving summary embedding to {embedding_path}...")
     np.savez_compressed(embedding_path, embedding=summary_embedding)

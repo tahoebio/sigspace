@@ -26,7 +26,7 @@ class PathConfig:
     # Vision scores specific files
     vision_diff_filename: str = "vision_scores_sparse_all.h5ad"
     drugs_filename: str = "drugs.csv"
-    gsea_scores_filename: str = "gsea_all_sparse.h5ad"
+    gsea_scores_filename: str = "gsea_sparse_all.h5ad"
 
     def __post_init__(self) -> None:
         """Initialize paths from environment variables if available."""

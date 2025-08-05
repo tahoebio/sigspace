@@ -17,15 +17,16 @@ from langgraph.graph import END, StateGraph
 from tahoe_agent.agent._prompts import (
     SYSTEM_PROMPT,
     DRUG_RANKING_PROMPT,
+    MOA_RANKING_PROMPT,
     SUMMARY_PROMPT,
 )
 from tahoe_agent.llm import get_llm, SourceType
 from tahoe_agent.model.retriever import Retriever
 
-# from tahoe_agent.tool.base_tool import python_executor, web_search
 from tahoe_agent.tool.vision_scores import analyze_vision_scores
 from tahoe_agent.tool.gsea_scores import analyze_gsea_scores
 from tahoe_agent.tool.drug_ranking import get_drug_list
+from tahoe_agent.tool.moa_ranking import get_moa_list
 from tahoe_agent.utils import pretty_print
 from functools import partial
 from pydantic import BaseModel, Field
@@ -48,15 +49,37 @@ class DrugRankings(BaseModel):
     )
 
 
+class MOARanking(BaseModel):
+    """Individual MOA ranking with score."""
+
+    moa: str = Field(description="Name of the MOA")
+    score: float = Field(description="Relevance score for the MOA")
+
+
+class MOARankings(BaseModel):
+    """Structured output for MOA rankings."""
+
+    rankings: TypingList[MOARanking] = Field(
+        description="List of MOA rankings ordered by relevance score"
+    )
+
+
 class AgentState(TypedDict):
     """State of the agent."""
 
     messages: List[BaseMessage]
     signature_summary: Optional[str]  # Store the summary from retrieval step
     drug_rankings: Optional[str]  # Store the final drug ranking results
-    structured_rankings: Optional[
+    structured_drug_rankings: Optional[
         TypingList[DrugRanking]
     ]  # Store structured drug rankings
+    moa_rankings: Optional[str]  # Store the final MOA ranking results
+    structured_moa_rankings: Optional[
+        TypingList[MOARanking]
+    ]  # Store structured MOA rankings
+    analysis_tool_executed: Optional[
+        bool
+    ]  # Track if analysis tool (vision/gsea) has been executed
 
 
 class BaseAgent:
@@ -64,7 +87,7 @@ class BaseAgent:
 
     def __init__(
         self,
-        llm: Union[str, BaseChatModel] = "claude-3-5-sonnet-20241022",
+        llm: Union[str, BaseChatModel] = "deepseek-r1-671b",
         temperature: float = 0.7,
         use_retriever: bool = False,
         timeout_seconds: int = 300,
@@ -72,6 +95,7 @@ class BaseAgent:
         base_url: Optional[str] = None,
         api_key: str = "EMPTY",
         tool_config: Optional[Dict[str, Any]] = None,
+        task_type: str = "drug_ranking",
     ):
         """Initialize the base agent.
 
@@ -104,6 +128,7 @@ class BaseAgent:
         self.use_retriever = use_retriever
         self.timeout_seconds = timeout_seconds
         self.tool_config = tool_config or {}  # Store hidden tool configuration
+        self.task_type = task_type  # Store task type for configurable task selection
 
         # Store source information to handle provider-specific configurations
         self.source = source
@@ -140,7 +165,7 @@ class BaseAgent:
         ]
 
     def configure(self) -> None:
-        """Configures the agent's workflow for vision analysis and drug ranking."""
+        """Configures the agent's workflow for vision analysis, gsea analysis, drug ranking, and MOA ranking."""
         tool_descriptions = [
             f"**{t.name}**: {t.description}" for t in self.native_tools
         ]
@@ -151,6 +176,10 @@ class BaseAgent:
 
         # Node 1: Plan the next step, which may involve calling a tool.
         def plan_step(state: AgentState) -> AgentState:
+            # If an analysis tool has already been executed, skip planning
+            if state.get("analysis_tool_executed"):
+                return state
+
             messages = [SystemMessage(content=self.system_prompt)] + state["messages"]
             llm_with_tools = self.llm.bind_tools(
                 [analyze_vision_scores, analyze_gsea_scores], tool_choice="any"
@@ -178,6 +207,7 @@ class BaseAgent:
                 content=result, name=analyze_vision_scores.name, tool_call_id=tool_id
             )
             state["messages"].append(tool_message)
+            state["analysis_tool_executed"] = True  # Mark analysis tool as executed
             return state
 
         # Node 2B: Execute the GSEA tool if requested by the planner.
@@ -199,6 +229,7 @@ class BaseAgent:
                 content=result, name=analyze_gsea_scores.name, tool_call_id=tool_id
             )
             state["messages"].append(tool_message)
+            state["analysis_tool_executed"] = True  # Mark analysis tool as executed
             return state
 
         # Node 3: Summarize the results from the vision tool.
@@ -284,7 +315,7 @@ class BaseAgent:
                     )
                 )
                 state["drug_rankings"] = rankings_text
-                state["structured_rankings"] = top_50_rankings
+                state["structured_drug_rankings"] = top_50_rankings
             else:
                 rankings_text = (
                     f"Error: Unexpected response format: {structured_response}"
@@ -294,9 +325,71 @@ class BaseAgent:
             state["messages"].append(AIMessage(content=rankings_text))
             return state
 
+        # Node 5: Rank MOAs based on the summary and return structured output.
+        def rank_moas(state: AgentState) -> AgentState:
+            self.logger.info("[rank_moas] --- Ranking MOAs ---")
+            summary = state.get("signature_summary")
+            if not summary:
+                self.logger.error(
+                    "[rank_moas] Error: No summary available for MOA ranking."
+                )
+                return state
+
+            # Since get_moa_list takes no arguments, we can invoke it directly.
+            self.logger.info("[rank_moas] Invoking get_moa_list tool directly...")
+            moa_list_str = get_moa_list.invoke({})
+            self.logger.info(
+                f"[rank_moas] Result from get_moa_list tool: {str(moa_list_str)[:300]}..."
+            )
+
+            # Generate final ranked list with structured output
+            final_messages = [
+                HumanMessage(
+                    content=MOA_RANKING_PROMPT.format(
+                        moa_list=moa_list_str, summary=summary
+                    )
+                ),
+            ]
+
+            self.logger.info("[rank_moas] Messages content for final ranking LLM:")
+            for msg in final_messages:
+                self.logger.info(
+                    f"[rank_moas] [{msg.__class__.__name__}]: {msg.content}..."
+                )
+
+            llm_with_structured_output = self.llm.with_structured_output(MOARankings)
+            structured_response = llm_with_structured_output.invoke(final_messages)
+
+            self.logger.info(
+                f"[rank_moas] Structured response from ranking LLM: {structured_response}"
+            )
+
+            if isinstance(structured_response, MOARankings):
+                all_rankings = structured_response.rankings
+                rankings_text = f"All {len(all_rankings)} MOA Rankings:\n" + "\n".join(
+                    [
+                        f"{i+1}. {r.moa}: {r.score:.3f}"
+                        for i, r in enumerate(all_rankings)
+                    ]
+                )
+                state["moa_rankings"] = rankings_text
+                state["structured_moa_rankings"] = all_rankings
+            else:
+                rankings_text = (
+                    f"Error: Unexpected response format: {structured_response}"
+                )
+                state["moa_rankings"] = rankings_text
+
+            state["messages"].append(AIMessage(content=rankings_text))
+            return state
+
         # Conditional router to decide which tool to execute.
         def should_execute_tool(state: AgentState) -> str:
             """Router to decide which tool to execute."""
+            # If analysis tool already executed, skip to summarization
+            if state.get("analysis_tool_executed"):
+                return "summarize_results"
+
             last_message = state["messages"][-1]
             if hasattr(last_message, "tool_calls") and last_message.tool_calls:
                 tool_name = last_message.tool_calls[0]["name"]
@@ -306,13 +399,14 @@ class BaseAgent:
                     return "execute_gsea_tool"
             return "end"  # Default to end if no tool call
 
-        # Conditional router to decide whether to perform drug ranking.
-        def should_rank_drugs(state: AgentState) -> str:
-            original_message = state["messages"][0]
-            content = str(original_message.content).lower()
-            ranking_keywords = ["rank", "ranking", "compare", "mechanism", "moa"]
-            if any(keyword in content for keyword in ranking_keywords):
+        # Conditional router to decide which task to perform.
+        def should_rank(state: AgentState) -> str:
+            """Router to decide which task to perform."""
+            if self.task_type == "moa_ranking":
+                return "rank_moas"
+            if self.task_type == "drug_ranking":
                 return "rank_drugs"
+
             return "end"
 
         # Define the workflow graph
@@ -321,6 +415,7 @@ class BaseAgent:
         workflow.add_node("execute_gsea_tool", execute_gsea_tool)
         workflow.add_node("summarize_results", summarize_results)
         workflow.add_node("rank_drugs", rank_drugs)
+        workflow.add_node("rank_moas", rank_moas)
 
         workflow.set_entry_point("plan_step")
 
@@ -330,6 +425,7 @@ class BaseAgent:
             {
                 "execute_vision_tool": "execute_vision_tool",
                 "execute_gsea_tool": "execute_gsea_tool",
+                "summarize_results": "summarize_results",
                 "end": END,
             },
         )
@@ -339,15 +435,19 @@ class BaseAgent:
 
         workflow.add_conditional_edges(
             "summarize_results",
-            should_rank_drugs,
-            {"rank_drugs": "rank_drugs", "end": END},
+            should_rank,
+            {
+                "rank_drugs": "rank_drugs",
+                "rank_moas": "rank_moas",
+                "end": END,
+            },
         )
+
         workflow.add_edge("rank_drugs", END)
+        workflow.add_edge("rank_moas", END)
 
         self.app = workflow.compile(checkpointer=self.checkpointer)
         self.configured = True
-        # mermaid_code = self.app.get_graph().draw_mermaid()
-        # print(mermaid_code)
 
     def _inject_drug_name(self, tool_func: Any, tool_args: Dict[str, Any]) -> Any:  # noqa: ANN401
         # Create a partial version of the tool function with drug_name pre-bound
@@ -367,8 +467,9 @@ class BaseAgent:
     ) -> tuple[
         List[tuple[str, str]],
         str,
-        Optional[TypingList[DrugRanking]],
         Optional[str],
+        Optional[TypingList[DrugRanking]],
+        Optional[TypingList[MOARanking]],
     ]:
         """Run the agent with a given prompt.
 
@@ -377,7 +478,7 @@ class BaseAgent:
             **kwargs: Additional arguments
 
         Returns:
-            Tuple of (log, final_response, structured_rankings, summary)
+            Tuple of (log, final_response, summary, structured_drug_rankings, structured_moa_rankings)
         """
         if not self.configured:
             self.configure()
@@ -388,7 +489,8 @@ class BaseAgent:
 
         self.log = []
         final_response = ""
-        structured_rankings = None
+        structured_drug_rankings = None
+        structured_moa_rankings = None
         summary = None
 
         # Stream the workflow
@@ -422,10 +524,17 @@ class BaseAgent:
 
             if (
                 final_state
-                and "structured_rankings" in final_state
-                and final_state["structured_rankings"]
+                and "structured_drug_rankings" in final_state
+                and final_state["structured_drug_rankings"]
             ):
-                structured_rankings = final_state["structured_rankings"]
+                structured_drug_rankings = final_state["structured_drug_rankings"]
+
+            if (
+                final_state
+                and "structured_moa_rankings" in final_state
+                and final_state["structured_moa_rankings"]
+            ):
+                structured_moa_rankings = final_state["structured_moa_rankings"]
 
             if (
                 final_state
@@ -439,7 +548,13 @@ class BaseAgent:
             self.log.append(("error", error_msg))
             final_response = error_msg
 
-        return self.log, final_response, structured_rankings, summary
+        return (
+            self.log,
+            final_response,
+            summary,
+            structured_drug_rankings,
+            structured_moa_rankings,
+        )
 
     def chat(self, prompt: str) -> str:
         """Simple chat interface.
