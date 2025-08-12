@@ -10,9 +10,16 @@ import seaborn as sns
 def plot_rank_matrix_heatmap(rank_matrix, drugs, ranking_directory, cell_line_str):
     fig, ax = plt.subplots(figsize=(20, 16))
     mask = rank_matrix == 0
-    cmap = plt.get_cmap("RdBu_r").copy()
-    cmap.set_bad(color="white")
+
+    base_cmap = plt.get_cmap("RdBu_r")
+    cmap = base_cmap.with_extremes(bad="#e0e0e0")
+
     rank_matrix_masked = np.ma.masked_where(mask, rank_matrix)
+
+    nonzero = rank_matrix[~mask]
+    vmin = np.min(nonzero) if nonzero.size > 0 else 1
+    vmax = np.max(nonzero) if nonzero.size > 0 else 1
+
     sns.heatmap(
         rank_matrix_masked,
         annot=False,
@@ -23,6 +30,8 @@ def plot_rank_matrix_heatmap(rank_matrix, drugs, ranking_directory, cell_line_st
         cbar_kws={"shrink": 0.5, "label": "ranks"},
         square=True,
         mask=mask,
+        vmin=vmin,
+        vmax=vmax,
     )
     ax.tick_params(left=False, bottom=False)
     ax.set_xlabel("ranked drug")
@@ -157,7 +166,11 @@ def combine_rankings(files):
         name = os.path.basename(file)
         if name.startswith("drugrank"):
             parts = name.split("_")
-            drug = "_".join(parts[1:-1])
+            # The new format: ..._{drug}_{cell_line}_{temperature}
+            # So: -3 is drug, -2 is cell line, -1 is temperature (with .csv or not)
+            if len(parts) < 4:
+                continue  # skip malformed names
+            drug = parts[-3]
             df = pd.read_csv(file)
             ranks = df["drug"].tolist()
             truth_to_ranks[drug] = ranks
@@ -171,7 +184,11 @@ def analyze_rankings(ranking_directory, drugs_file, cell_line=None):
     drugs = drug_data["drug"].tolist()
     n = len(drugs)
     cell_line_str = "None" if cell_line is None else cell_line
-    files = list(ranking_directory.glob(f"drugrank_*_{cell_line_str}.csv"))
+    files = [
+        f
+        for f in ranking_directory.glob("*.csv")
+        if "drugrank" in f.name and cell_line_str in f.name
+    ]
     rank_dictionary = combine_rankings(files)
     rank_matrix = np.zeros((n, n))
     for i, drug in enumerate(drugs):

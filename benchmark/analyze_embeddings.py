@@ -171,8 +171,13 @@ def analyze_embeddings(summary_directory, drugs_file, cell_line=None):
     available_drugs = []
     available_moas = []
     for drug, moa in zip(drugs, moas):
-        embedding_path = summary_directory / f"embedding_{drug}_{cell_line}.npz"
-        if embedding_path.exists():
+        embedding_path = None
+        for f in summary_directory.glob("embedding*"):
+            fname = f.name
+            if drug in fname and (cell_line is None or (str(cell_line) in fname)):
+                embedding_path = f
+                break
+        if embedding_path is not None and embedding_path.exists():
             embedding = np.load(embedding_path)["embedding"]
             available_embeddings.append(embedding)
             available_drugs.append(drug)
