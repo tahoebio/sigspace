@@ -26,14 +26,27 @@ def combine_rankings(files, tag):
 
 
 def plot_rank_matrix_heatmap(rank_matrix, experiment_drugs, reference, save_file):
-    fig, ax = plt.subplots(figsize=(20, 16))
+    plt.style.use("default")
+    fig, ax = plt.subplots(figsize=(22, 18))
 
-    mask = rank_matrix == 0
+    sorted_experiment_drugs = sorted(experiment_drugs)
+    sorted_reference = sorted(reference)
+
+    sorted_experiment_indices = [
+        experiment_drugs.index(drug) for drug in sorted_experiment_drugs
+    ]
+    sorted_reference_indices = [reference.index(drug) for drug in sorted_reference]
+
+    sorted_rank_matrix = rank_matrix[
+        np.ix_(sorted_experiment_indices, sorted_reference_indices)
+    ]
+
+    mask = sorted_rank_matrix == 0
     cmap = plt.get_cmap("RdBu_r").with_extremes(bad="#e0e0e0")
 
-    rank_matrix_masked = np.ma.masked_where(mask, rank_matrix)
+    rank_matrix_masked = np.ma.masked_where(mask, sorted_rank_matrix)
 
-    nonzero = rank_matrix[~mask]
+    nonzero = sorted_rank_matrix[~mask]
     vmin = np.min(nonzero) if nonzero.size > 0 else 1
     vmax = np.max(nonzero) if nonzero.size > 0 else 1
 
@@ -41,23 +54,41 @@ def plot_rank_matrix_heatmap(rank_matrix, experiment_drugs, reference, save_file
         rank_matrix_masked,
         annot=False,
         cmap=cmap,
-        xticklabels=reference,
-        yticklabels=experiment_drugs,
+        xticklabels=sorted_reference,
+        yticklabels=sorted_experiment_drugs,
         ax=ax,
-        cbar_kws={"shrink": 0.5, "label": "ranks"},
+        cbar_kws={"shrink": 0.6, "label": "drug rank"},
         square=True,
         mask=mask,
         vmin=vmin,
         vmax=vmax,
+        linewidths=0.1,
+        linecolor="white",
     )
+
     ax.tick_params(left=False, bottom=False)
-    ax.set_xlabel("ranked")
-    ax.set_ylabel("truth")
+    ax.set_xlabel("ranked drugs", fontsize=12, fontweight="bold", color="#2C3E50")
+    ax.set_ylabel("true drugs", fontsize=12, fontweight="bold", color="#2C3E50")
+    ax.set_title(
+        "drug ranking matrix heatmap",
+        fontsize=14,
+        fontweight="bold",
+        color="#2C3E50",
+        pad=20,
+    )
+
     ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha="center", fontsize=2)
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0, ha="right", fontsize=2)
-    fig.subplots_adjust(bottom=0.3, right=0.85, top=0.95, left=0.2)
-    fig.savefig(save_file, bbox_inches="tight", dpi=300)
 
+    ax.grid(True, alpha=0.3, linestyle="-", linewidth=0.5, color="#BDC3C7")
+    ax.set_axisbelow(True)
+
+    cbar = ax.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=10, colors="#2C3E50")
+    cbar.set_label("drug rank", fontsize=12, fontweight="bold", color="#2C3E50")
+
+    fig.subplots_adjust(bottom=0.3, right=0.88, top=0.92, left=0.2)
+    fig.savefig(save_file, bbox_inches="tight", dpi=300, facecolor="white")
     plt.close(fig)
 
 
@@ -65,29 +96,114 @@ def plot_moa_distributions(same_moa_ranks, different_moa_ranks, save_file):
     same_moa_mean = np.mean(np.array(same_moa_ranks))
     different_moa_mean = np.mean(np.array(different_moa_ranks))
 
-    fig, (ax_one, ax_two) = plt.subplots(1, 2, figsize=(15, 6))
+    plt.style.use("default")
+    fig, (ax_one, ax_two) = plt.subplots(1, 2, figsize=(16, 7))
 
-    sns.kdeplot(data=same_moa_ranks, ax=ax_one, label="same moa", color="blue")
-    sns.kdeplot(data=different_moa_ranks, ax=ax_one, label="different moa", color="red")
-    ax_one.axvline(same_moa_mean, color="blue", linestyle="--", alpha=0.5)
-    ax_one.axvline(different_moa_mean, color="red", linestyle="--", alpha=0.5)
-    ax_one.set_xlabel("rank")
-    ax_one.set_ylabel("density")
-    ax_one.set_title("out_of_moa vs. in_moa density distributions")
-    ax_one.legend()
+    same_color = "#2E86AB"
+    different_color = "#A23B72"
 
-    sns.ecdfplot(data=same_moa_ranks, ax=ax_two, label="same moa", color="blue")
-    sns.ecdfplot(
-        data=different_moa_ranks, ax=ax_two, label="different moa", color="red"
+    sns.kdeplot(
+        data=same_moa_ranks,
+        ax=ax_one,
+        label="same moa",
+        color=same_color,
+        linewidth=2.5,
+        alpha=0.8,
     )
-    ax_two.set_xlabel("rank")
-    ax_two.set_ylabel("cumulative probability")
-    ax_two.set_title("cumulative distributions of ranks")
+    sns.kdeplot(
+        data=different_moa_ranks,
+        ax=ax_one,
+        label="different moa",
+        color=different_color,
+        linewidth=2.5,
+        alpha=0.8,
+    )
+
+    ax_one.axvline(
+        same_moa_mean, color=same_color, linestyle="--", alpha=0.7, linewidth=2
+    )
+    ax_one.axvline(
+        different_moa_mean,
+        color=different_color,
+        linestyle="--",
+        alpha=0.7,
+        linewidth=2,
+    )
+
+    ax_one.set_xlabel("drug rank", fontsize=12, fontweight="bold", color="#2C3E50")
+    ax_one.set_ylabel("density", fontsize=12, fontweight="bold", color="#2C3E50")
+    ax_one.set_title(
+        "rank distributions: same vs. different moa",
+        fontsize=14,
+        fontweight="bold",
+        color="#2C3E50",
+        pad=20,
+    )
+    ax_one.tick_params(axis="both", which="major", labelsize=10, colors="#2C3E50")
+    ax_one.grid(True, alpha=0.3, linestyle="-", linewidth=0.5, color="#BDC3C7")
+    ax_one.set_axisbelow(True)
+
+    legend1 = ax_one.legend(
+        title_fontsize=11,
+        fontsize=10,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        edgecolor="#BDC3C7",
+        loc="upper right",
+    )
+    legend1.get_title().set_fontweight("bold")
+    legend1.get_title().set_color("#2C3E50")
+
+    sns.ecdfplot(
+        data=same_moa_ranks,
+        ax=ax_two,
+        label="same moa",
+        color=same_color,
+        linewidth=2.5,
+    )
+    sns.ecdfplot(
+        data=different_moa_ranks,
+        ax=ax_two,
+        label="different moa",
+        color=different_color,
+        linewidth=2.5,
+    )
+
+    ax_two.set_xlabel("drug rank", fontsize=12, fontweight="bold", color="#2C3E50")
+    ax_two.set_ylabel(
+        "cumulative probability", fontsize=12, fontweight="bold", color="#2C3E50"
+    )
+    ax_two.set_title(
+        "cumulative rank distributions",
+        fontsize=14,
+        fontweight="bold",
+        color="#2C3E50",
+        pad=20,
+    )
+    ax_two.tick_params(axis="both", which="major", labelsize=10, colors="#2C3E50")
+    ax_two.grid(True, alpha=0.3, linestyle="-", linewidth=0.5, color="#BDC3C7")
+    ax_two.set_axisbelow(True)
+    ax_two.set_ylim(0, 1)
+
+    legend2 = ax_two.legend(
+        title_fontsize=11,
+        fontsize=10,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        edgecolor="#BDC3C7",
+        loc="lower right",
+    )
+    legend2.get_title().set_fontweight("bold")
+    legend2.get_title().set_color("#2C3E50")
 
     fig.tight_layout()
-    fig.savefig(save_file, bbox_inches="tight", dpi=300)
-
-    plt.close()
+    fig.subplots_adjust(top=0.9, left=0.08, right=0.95, bottom=0.1)
+    fig.savefig(save_file, bbox_inches="tight", dpi=300, facecolor="white")
+    plt.close(fig)
 
 
 def plot_binned_true_drug_ranks(
@@ -97,12 +213,9 @@ def plot_binned_true_drug_ranks(
     num_drugs = len(all_drugs)
 
     bin_specs = [
-        (1, 5, "1-5"),
-        (6, 10, "6-10"),
-        (11, 20, "11-20"),
-        (21, 30, "21-30"),
-        (31, 40, "31-40"),
-        (41, 50, "41-50"),
+        (1, 10, "1-10"),
+        (11, 30, "11-30"),
+        (31, 50, "31-50"),
     ]
 
     bin_labels = [b[2] for b in bin_specs] + ["not found"]
@@ -139,7 +252,6 @@ def plot_binned_true_drug_ranks(
         }
     )
 
-    # metrics (observed vs. expected)
     def reciprocal(r):
         return 0.0 if r <= 0 else 1.0 / float(r)
 
@@ -170,40 +282,104 @@ def plot_binned_true_drug_ranks(
     exp_H20 = (min(20, num_drugs) / num_drugs) * 100.0
     exp_H50 = (min(50, num_drugs) / num_drugs) * 100.0
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(data=df, x="bin", y="proportion", hue="type", ax=ax)
-    ax.set_xlabel("true drug rank (binned)")
-    ax.set_ylabel("proportion of experiments")
-    ax.set_title(
-        f"binned true drug rank (top {k} reported) - observed vs. random baseline"
+    plt.style.use("default")
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    observed_color = "#2E86AB"
+    baseline_color = "#A23B72"
+    colors = [observed_color, baseline_color]
+
+    sns.barplot(
+        data=df,
+        x="bin",
+        y="proportion",
+        hue="type",
+        ax=ax,
+        palette=colors,
+        edgecolor="white",
+        linewidth=1.5,
+        alpha=0.85,
     )
-    ax.set_ylim(0, max(df["proportion"].max() * 1.15, 0.15))
+
+    ax.set_xlabel(
+        "true drug rank (binned)", fontsize=14, fontweight="bold", color="#2C3E50"
+    )
+    ax.set_ylabel(
+        "proportion of experiments", fontsize=14, fontweight="bold", color="#2C3E50"
+    )
+    ax.set_title(
+        f"binned true drug rank analysis (top {k} reported)\nobserved vs. random baseline performance",
+        fontsize=16,
+        fontweight="bold",
+        color="#2C3E50",
+        pad=20,
+    )
+
+    max_prop = df["proportion"].max()
+    ax.set_ylim(0, max(max_prop * 1.25, 0.15))
+
+    ax.tick_params(axis="both", which="major", labelsize=12, colors="#2C3E50")
     for label in ax.get_xticklabels():
         label.set_rotation(0)
         label.set_horizontalalignment("center")
-    ax.legend(title="", frameon=False)
+        label.set_fontweight("medium")
 
-    metrics_lines = [
-        f"MRR: {obs_MRR:.3f} (exp {exp_MRR:.3f})",
-        f"MRR@20: {obs_MRR20:.3f} (exp {exp_MRR20:.3f})",
-        f"MRR@50: {obs_MRR50:.3f} (exp {exp_MRR50:.3f})",
-        f"Hits@20: {obs_H20:.1f}% (exp {exp_H20:.1f}%)",
-        f"Hits@50: {obs_H50:.1f}% (exp {exp_H50:.1f}%)",
-        f"M (candidates) = {num_drugs}, N (experiments) = {num_experiments}",
-    ]
+    legend = ax.legend(
+        title_fontsize=12,
+        fontsize=11,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        framealpha=0.9,
+        edgecolor="#BDC3C7",
+        loc="upper right",
+    )
+    legend.get_title().set_fontweight("bold")
+    legend.get_title().set_color("#2C3E50")
 
-    ax.annotate(
-        "\n".join(metrics_lines),
-        xy=(0.995, 0.995),
-        xycoords="axes fraction",
-        ha="right",
-        va="top",
-        fontsize=9,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9, linewidth=0),
+    for container in ax.containers:
+        ax.bar_label(
+            container,
+            fmt="%.4f",
+            fontsize=10,
+            fontweight="bold",
+            color="#2C3E50",
+            padding=3,
+        )
+
+    ax.grid(True, alpha=0.3, linestyle="-", linewidth=0.5, color="#BDC3C7")
+    ax.set_axisbelow(True)
+
+    metrics_text = f"""
+• MRR: {obs_MRR:.3f} (baseline: {exp_MRR:.3f})
+• MRR@20: {obs_MRR20:.3f} (baseline: {exp_MRR20:.3f})
+• MRR@50: {obs_MRR50:.3f} (baseline: {exp_MRR50:.3f})
+• Hits@20: {obs_H20:.4f}% (baseline: {exp_H20:.4f}%)
+• Hits@50: {obs_H50:.4f}% (baseline: {exp_H50:.4f}%)
+    """
+
+    ax.text(
+        0.02,
+        0.98,
+        metrics_text.strip(),
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="left",
+        bbox=dict(
+            boxstyle="round,pad=0.5",
+            facecolor="white",
+            alpha=0.95,
+            edgecolor="#2E86AB",
+            linewidth=1.5,
+        ),
+        color="#2C3E50",
+        fontweight="medium",
     )
 
     fig.tight_layout()
-    fig.savefig(save_file, bbox_inches="tight", dpi=300)
+    fig.subplots_adjust(top=0.85, left=0.08, right=0.95, bottom=0.1)
+    fig.savefig(save_file, bbox_inches="tight", dpi=300, facecolor="white")
     plt.close(fig)
 
     return {
@@ -243,9 +419,12 @@ def plot_moa_ranking_performance_by_class(
                 "ranks": ranks,
             }
 
-    moa_labels = list(moa_performance.keys())
-    mean_ranks = [moa_performance[moa]["mean rank"] for moa in moa_labels]
-    counts = [len(moa_performance[moa]["ranks"]) for moa in moa_labels]
+    moa_data = [(moa, moa_performance[moa]) for moa in moa_performance.keys()]
+    moa_data.sort(key=lambda x: len(x[1]["ranks"]), reverse=True)
+
+    moa_labels = [item[0] for item in moa_data]
+    mean_ranks = [item[1]["mean rank"] for item in moa_data]
+    counts = [len(item[1]["ranks"]) for item in moa_data]
 
     def reciprocal(r):
         return 0.0 if r <= 0 else 1.0 / float(r)
@@ -282,52 +461,102 @@ def plot_moa_ranking_performance_by_class(
         "Hits@10": (10 / M) * 100.0,
     }
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+    plt.style.use("default")
+    fig, ax = plt.subplots(figsize=(16, 8))
+
+    baseline = (M + 1) / 2.0
+
+    colors = ["#FF6B35" if rank < baseline else "#2E86AB" for rank in mean_ranks]
+    edge_colors = ["#D63031" if rank < baseline else "#1A5F7A" for rank in mean_ranks]
 
     bars = ax.bar(
-        range(len(moa_labels)), mean_ranks, alpha=0.8, color="skyblue", edgecolor="navy"
+        range(len(moa_labels)),
+        mean_ranks,
+        alpha=0.85,
+        color=colors,
+        edgecolor=edge_colors,
+        linewidth=1.5,
     )
-    ax.set_xlabel("drug class")
-    ax.set_ylabel("mean rank of true moa")
-    ax.set_xticks(range(len(moa_labels)))
-    ax.set_xticklabels([label for label in moa_labels], rotation=45, ha="right")
 
-    for _, (bar, count) in enumerate(zip(bars, counts)):
+    ax.set_xlabel(
+        "drug class (sorted by sample size)",
+        fontsize=12,
+        fontweight="bold",
+        color="#2C3E50",
+    )
+    ax.set_ylabel(
+        "mean rank of true moa", fontsize=12, fontweight="bold", color="#2C3E50"
+    )
+    ax.set_title(
+        "moa ranking performance by drug class",
+        fontsize=14,
+        fontweight="bold",
+        color="#2C3E50",
+        pad=20,
+    )
+    ax.set_xticks(range(len(moa_labels)))
+    ax.set_xticklabels(
+        [label for label in moa_labels], rotation=45, ha="right", fontsize=10
+    )
+
+    for i, (bar, count) in enumerate(zip(bars, counts)):
         height = bar.get_height()
         ax.text(
             bar.get_x() + bar.get_width() / 2.0,
             height / 2,
-            f"n = {count}",
+            f"n={count}",
             ha="center",
             va="center",
             fontsize=9,
-            color="navy",
-            fontweight="normal",
+            color="white",
+            fontweight="bold",
+            rotation=90,
         )
 
-    baseline = (M + 1) / 2.0
-    ax.axhline(baseline, linestyle="--", linewidth=1.2, color="black")
+    ax.axhline(baseline, linestyle="--", linewidth=2, color="#2C3E50", alpha=0.8)
     ymin, ymax = ax.get_ylim()
     if baseline > 0.98 * ymax:
         ax.set_ylim(ymin, baseline * 1.05)
+
     ax.text(
         0.995,
         (baseline - ax.get_ylim()[0]) / (ax.get_ylim()[1] - ax.get_ylim()[0]),
-        f"random mean rank = {baseline:.1f}",
+        f"random baseline = {baseline:.1f}",
         ha="right",
         va="bottom",
         transform=ax.transAxes,
         fontsize=10,
-        color="black",
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7, linewidth=0),
+        color="#2C3E50",
+        fontweight="bold",
+        bbox=dict(
+            boxstyle="round,pad=0.3",
+            facecolor="white",
+            alpha=0.9,
+            edgecolor="#2C3E50",
+            linewidth=1,
+        ),
     )
+
+    from matplotlib.patches import Patch
+
+    legend_elements = [
+        Patch(
+            facecolor="#FF6B35", edgecolor="#D63031", label="above baseline (better)"
+        ),
+        Patch(facecolor="#2E86AB", edgecolor="#1A5F7A", label="below baseline (worse)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper left", fontsize=10, framealpha=0.9)
+
+    ax.grid(True, alpha=0.3, linestyle="-", linewidth=0.5, color="#BDC3C7")
+    ax.set_axisbelow(True)
+    ax.tick_params(axis="both", which="major", labelsize=10, colors="#2C3E50")
 
     lines = []
     for k in ["MRR", "MRR@1", "MRR@5", "MRR@10", "Hits@1", "Hits@5", "Hits@10"]:
         obs = observed_metrics[k]
         exp = expected_metrics[k]
         if "Hits" in k:
-            lines.append(f"{k}: {obs:.1f}% (exp {exp:.1f}%)")
+            lines.append(f"{k}: {obs:.4f}% (exp {exp:.4f}%)")
         else:
             lines.append(f"{k}: {obs:.3f} (exp {exp:.3f})")
 
@@ -342,8 +571,9 @@ def plot_moa_ranking_performance_by_class(
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.85, linewidth=0),
     )
 
-    plt.tight_layout()
-    fig.savefig(save_file, bbox_inches="tight", dpi=300)
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.9, left=0.08, right=0.95, bottom=0.15)
+    fig.savefig(save_file, bbox_inches="tight", dpi=300, facecolor="white")
     plt.close(fig)
 
 
@@ -451,9 +681,23 @@ def analyze_moa_rankings(ranking_directory, drugs_file, cell_line):
     rank_matrix = np.zeros((len(experiment_drugs), len(unique_moas)))
 
     for i, drug in enumerate(experiment_drugs):
-        for rank, ranked_moa in enumerate(rank_dictionary[drug]):
+        ranked_moas = rank_dictionary[drug]
+        num_ranked = len(ranked_moas)
+        num_total = len(unique_moas)
+
+        if num_ranked < num_total:
+            unranked_positions = list(range(num_ranked + 1, num_total + 1))
+            imputed_rank = np.mean(unranked_positions)
+        else:
+            imputed_rank = 0
+
+        for rank, ranked_moa in enumerate(ranked_moas):
             if ranked_moa in unique_moas:
                 rank_matrix[i, unique_moas.index(ranked_moa)] = rank + 1
+
+        for moa in unique_moas:
+            if moa not in ranked_moas:
+                rank_matrix[i, unique_moas.index(moa)] = imputed_rank
 
     moa_to_drugs = {}
     for drug in experiment_drugs:
