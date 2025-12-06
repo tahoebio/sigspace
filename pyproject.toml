@@ -6,7 +6,7 @@ requires = [ "setuptools>=61", "wheel" ]
 [project]
 name = "tahoe-agent"
 version = "0.0.0"
-description = "A minimal agent implementation based on Biomni"
+description = "Sig-space agent"
 readme = "README.md"
 keywords = [ "agent", "ai", "langchain", "llm" ]
 license = { text = "MIT" }
